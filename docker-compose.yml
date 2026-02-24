@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================================================
   # HDFS - NameNode + 2 DataNodes
@@ -23,10 +21,11 @@ services:
     environment:
       - HADOOP_HOME=/opt/hadoop
     healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-safemode", "get"]
-      interval: 30s
+      test: ["CMD-SHELL", "hdfs dfsadmin -safemode get | grep -q 'Safe mode is OFF'"]
+      interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 30s
     networks:
       - climate-net
 

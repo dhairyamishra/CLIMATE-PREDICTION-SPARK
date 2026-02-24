@@ -2,7 +2,10 @@ FROM bitnami/spark:3.5.1
 
 USER root
 
-RUN pip install --no-cache-dir \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libhdf5-dev libnetcdf-dev libgeos-dev libeccodes-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir \
     pyspark==3.5.1 \
     pyarrow>=14.0.0 \
     pandas>=2.0.0 \
@@ -15,7 +18,9 @@ RUN pip install --no-cache-dir \
     requests>=2.31.0 \
     psycopg2-binary>=2.9.9 \
     sqlalchemy>=2.0.0 \
-    geoalchemy2>=0.14.0
+    geoalchemy2>=0.14.0 \
+    netCDF4>=1.6.0 \
+    cfgrib>=0.9.10
 
 COPY core-site.xml /opt/bitnami/spark/conf/core-site.xml
 COPY hdfs-site.xml /opt/bitnami/spark/conf/hdfs-site.xml
