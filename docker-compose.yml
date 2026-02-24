@@ -1,0 +1,214 @@
+version: "3.8"
+
+services:
+  # ============================================================
+  # HDFS - NameNode + 2 DataNodes
+  # ============================================================
+  namenode:
+    build: ./docker/hdfs
+    container_name: namenode
+    hostname: namenode
+    command: >
+      bash -c "
+        if [ ! -f /opt/hadoop/data/namenode/formatted ]; then
+          hdfs namenode -format -force && touch /opt/hadoop/data/namenode/formatted;
+        fi;
+        hdfs namenode
+      "
+    ports:
+      - "9870:9870"   # Web UI
+      - "9000:9000"   # HDFS RPC
+    volumes:
+      - namenode-data:/opt/hadoop/data/namenode
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    healthcheck:
+      test: ["CMD", "hdfs", "dfsadmin", "-safemode", "get"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - climate-net
+
+  datanode1:
+    build: ./docker/hdfs
+    container_name: datanode1
+    hostname: datanode1
+    command: hdfs datanode
+    depends_on:
+      namenode:
+        condition: service_healthy
+    volumes:
+      - datanode1-data:/opt/hadoop/data/datanode
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    networks:
+      - climate-net
+
+  datanode2:
+    build: ./docker/hdfs
+    container_name: datanode2
+    hostname: datanode2
+    command: hdfs datanode
+    depends_on:
+      namenode:
+        condition: service_healthy
+    volumes:
+      - datanode2-data:/opt/hadoop/data/datanode
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    networks:
+      - climate-net
+
+  # ============================================================
+  # Apache Spark - Master + 2 Workers
+  # ============================================================
+  spark-master:
+    build: ./docker/spark
+    container_name: spark-master
+    hostname: spark-master
+    env_file:
+      - .env
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master RPC
+    volumes:
+      - ./spark:/opt/spark-jobs
+      - ./scripts:/opt/scripts
+      - ./data:/opt/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+    networks:
+      - climate-net
+
+  spark-worker-1:
+    build: ./docker/spark
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    env_file:
+      - .env
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark:/opt/spark-jobs
+      - ./scripts:/opt/scripts
+      - ./data:/opt/data
+    networks:
+      - climate-net
+
+  spark-worker-2:
+    build: ./docker/spark
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    env_file:
+      - .env
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark:/opt/spark-jobs
+      - ./scripts:/opt/scripts
+      - ./data:/opt/data
+    networks:
+      - climate-net
+
+  # ============================================================
+  # PostgreSQL + PostGIS
+  # ============================================================
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: postgis
+    hostname: postgis
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-climate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-climate_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-climate_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/alembic/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-climate}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - climate-net
+
+  # ============================================================
+  # FastAPI Backend
+  # ============================================================
+  backend:
+    build: ./backend
+    container_name: climate-backend
+    hostname: backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks:
+      - climate-net
+
+  # ============================================================
+  # React Frontend
+  # ============================================================
+  frontend:
+    build: ./frontend
+    container_name: climate-frontend
+    hostname: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - climate-net
+
+  # ============================================================
+  # Nginx Reverse Proxy
+  # ============================================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: climate-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - climate-net
+
+volumes:
+  namenode-data:
+  datanode1-data:
+  datanode2-data:
+  postgres-data:
+
+networks:
+  climate-net:
+    driver: bridge

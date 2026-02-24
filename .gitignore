@@ -1,0 +1,50 @@
+# Data
+data/*
+!data/.gitkeep
+*.csv
+*.parquet
+*.nc
+*.grib
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes
+hdfs-data/
+postgres-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Logs
+*.log
+logs/

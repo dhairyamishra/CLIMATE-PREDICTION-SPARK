@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 96%;
+    --primary: 210 100% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 210 100% 52%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+.maplibregl-map {
+  font-family: inherit;
+}
+
+.maplibregl-popup-content {
+  background: hsl(222 47% 10%) !important;
+  color: hsl(210 40% 96%) !important;
+  border: 1px solid hsl(217 33% 25%);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.maplibregl-popup-tip {
+  border-top-color: hsl(222 47% 10%) !important;
+}
+
+.maplibregl-ctrl-group {
+  background: hsl(222 47% 10%) !important;
+  border: 1px solid hsl(217 33% 25%) !important;
+}
+
+.maplibregl-ctrl-group button {
+  filter: invert(1);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(222 47% 8%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(217 33% 25%);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(217 33% 35%);
+}
