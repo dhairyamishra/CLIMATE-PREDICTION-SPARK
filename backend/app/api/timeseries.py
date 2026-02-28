@@ -17,7 +17,7 @@ async def get_station_timeseries(
     station_id: str,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    resolution: str = Query("daily", regex="^(daily|monthly|yearly)$"),
+    resolution: str = Query("daily", pattern="^(daily|monthly|yearly)$"),
     limit: int = Query(3650, ge=1, le=50000),
     db: AsyncSession = Depends(get_db),
 ):

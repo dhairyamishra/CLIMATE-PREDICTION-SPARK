@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts"
 
 def test_generate_stations():
     """Test that station generation produces valid metadata."""
-    from generate_seed_data import _generate_stations, STATION_REGIONS
+    from generate_seed_data import generate_stations, STATION_REGIONS
 
-    stations = _generate_stations()
+    stations = generate_stations()
 
     assert len(stations) > 0
     assert len(stations) <= 600  # ~500 expected
@@ -35,9 +35,9 @@ def test_generate_stations():
 
 def test_station_regions_coverage():
     """Test that stations span all configured regions."""
-    from generate_seed_data import _generate_stations, STATION_REGIONS
+    from generate_seed_data import generate_stations, STATION_REGIONS
 
-    stations = _generate_stations()
+    stations = generate_stations()
     countries = set(s["country"] for s in stations)
     expected_countries = set(r[0] for r in STATION_REGIONS)
 
@@ -46,9 +46,9 @@ def test_station_regions_coverage():
 
 def test_generate_daily_obs_structure():
     """Test that daily observation generation produces correct columns."""
-    from generate_seed_data import _generate_stations
+    from generate_seed_data import generate_stations
 
-    stations = _generate_stations()
+    stations = generate_stations()
     station = stations[0]
 
     # Check that station has the fields needed by the obs generator
@@ -59,9 +59,9 @@ def test_generate_daily_obs_structure():
 
 def test_geohash_generation():
     """Test that geohashes are valid for station coordinates."""
-    from generate_seed_data import _generate_stations
+    from generate_seed_data import generate_stations
 
-    stations = _generate_stations()
+    stations = generate_stations()
 
     for s in stations[:10]:
         gh = s["geohash"]

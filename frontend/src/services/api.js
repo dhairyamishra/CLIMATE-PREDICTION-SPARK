@@ -1,14 +1,41 @@
 const API_BASE = '/api'
 
+const RETRY_DELAYS = [0, 1000, 3000]
+
 async function fetchJSON(url, options = {}) {
-  const response = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`)
+  const { retries = RETRY_DELAYS.length, signal } = options
+  let lastError
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt] || 3000))
+      }
+
+      const response = await fetch(`${API_BASE}${url}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+      })
+
+      if (!response.ok) {
+        const isRetryable = response.status >= 500 || response.status === 429
+        const msg = `${response.status} ${response.statusText}`
+        if (!isRetryable || attempt === retries - 1) {
+          throw new Error(msg)
+        }
+        lastError = new Error(msg)
+        continue
+      }
+
+      return response.json()
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      lastError = err
+      if (attempt === retries - 1) throw lastError
+    }
   }
-  return response.json()
+
+  throw lastError
 }
 
 export const api = {

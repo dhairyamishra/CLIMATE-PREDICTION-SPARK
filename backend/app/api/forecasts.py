@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/stations/{station_id}/forecast")
 async def get_station_forecast(
     station_id: str,
-    variable: Optional[str] = Query(None, regex="^(tmax|tmin|prcp)$"),
+    variable: Optional[str] = Query(None, pattern="^(tmax|tmin|prcp)$"),
     model_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):

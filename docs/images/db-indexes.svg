@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="780" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="780" height="400" rx="12" fill="url(#bg)"/>
+  <text x="390" y="32" text-anchor="middle" fill="#e2e8f0" font-family="system-ui" font-size="16" font-weight="700">PostGIS Performance Indexes — 20+ Indexes Across 7 Tables</text>
+
+  <!-- stations -->
+  <g filter="url(#shadow)">
+    <rect x="16" y="52" width="240" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="136" y="74" text-anchor="middle" fill="#3b82f6" font-family="system-ui" font-size="13" font-weight="700">stations</text>
+    <text x="28" y="92" fill="#86efac" font-family="monospace" font-size="10">GIST  geom</text>
+    <text x="28" y="107" fill="#fbbf24" font-family="monospace" font-size="10">B-tree geohash</text>
+    <text x="28" y="122" fill="#fbbf24" font-family="monospace" font-size="10">B-tree country</text>
+    <text x="28" y="137" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (latitude, longitude)</text>
+    <text x="28" y="152" fill="#64748b" font-family="monospace" font-size="9">500 rows · PK: id</text>
+  </g>
+
+  <!-- observations -->
+  <g filter="url(#shadow)">
+    <rect x="270" y="52" width="240" height="95" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="390" y="74" text-anchor="middle" fill="#22c55e" font-family="system-ui" font-size="13" font-weight="700">observations</text>
+    <text x="282" y="92" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (station_id, obs_date)</text>
+    <text x="282" y="107" fill="#fbbf24" font-family="monospace" font-size="10">B-tree obs_date</text>
+    <text x="282" y="122" fill="#fbbf24" font-family="monospace" font-size="10">B-tree station_id</text>
+    <text x="282" y="137" fill="#64748b" font-family="monospace" font-size="9">~180K rows · FK: station_id</text>
+  </g>
+
+  <!-- anomalies -->
+  <g filter="url(#shadow)">
+    <rect x="524" y="52" width="240" height="125" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+    <text x="644" y="74" text-anchor="middle" fill="#ef4444" font-family="system-ui" font-size="13" font-weight="700">anomalies</text>
+    <text x="536" y="92" fill="#86efac" font-family="monospace" font-size="10">GIST  geom</text>
+    <text x="536" y="107" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (station_id, date DESC)</text>
+    <text x="536" y="122" fill="#fbbf24" font-family="monospace" font-size="10">B-tree anomaly_date DESC</text>
+    <text x="536" y="137" fill="#fbbf24" font-family="monospace" font-size="10">B-tree anomaly_type</text>
+    <text x="536" y="152" fill="#fbbf24" font-family="monospace" font-size="10">B-tree severity DESC</text>
+    <text x="536" y="167" fill="#c084fc" font-family="monospace" font-size="10">Composite (type, sev, date)</text>
+  </g>
+
+  <!-- forecasts -->
+  <g filter="url(#shadow)">
+    <rect x="16" y="180" width="240" height="80" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="136" y="202" text-anchor="middle" fill="#f59e0b" font-family="system-ui" font-size="13" font-weight="700">forecasts</text>
+    <text x="28" y="222" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (station, var, date)</text>
+    <text x="28" y="237" fill="#64748b" font-family="monospace" font-size="9">Covering index · FK: station_id</text>
+    <text x="28" y="252" fill="#64748b" font-family="monospace" font-size="9">Variables: tmax, tmin, prcp</text>
+  </g>
+
+  <!-- anomaly_tiles -->
+  <g filter="url(#shadow)">
+    <rect x="270" y="180" width="240" height="95" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="390" y="202" text-anchor="middle" fill="#8b5cf6" font-family="system-ui" font-size="13" font-weight="700">anomaly_tiles</text>
+    <text x="282" y="222" fill="#86efac" font-family="monospace" font-size="10">GIST  geom</text>
+    <text x="282" y="237" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (geohash, tile_date)</text>
+    <text x="282" y="252" fill="#fbbf24" font-family="monospace" font-size="10">B-tree tile_date</text>
+    <text x="282" y="267" fill="#64748b" font-family="monospace" font-size="9">Heatmap aggregation queries</text>
+  </g>
+
+  <!-- monthly_summary -->
+  <g filter="url(#shadow)">
+    <rect x="524" y="180" width="240" height="80" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="644" y="202" text-anchor="middle" fill="#06b6d4" font-family="system-ui" font-size="13" font-weight="700">monthly_summary</text>
+    <text x="536" y="222" fill="#fbbf24" font-family="monospace" font-size="10">B-tree (year DESC, month DESC)</text>
+    <text x="536" y="237" fill="#64748b" font-family="monospace" font-size="9">~600 rows · Dashboard trends</text>
+    <text x="536" y="252" fill="#64748b" font-family="monospace" font-size="9">Ordered for latest-first</text>
+  </g>
+
+  <!-- model_registry -->
+  <g filter="url(#shadow)">
+    <rect x="16" y="280" width="240" height="80" rx="10" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+    <text x="136" y="302" text-anchor="middle" fill="#f472b6" font-family="system-ui" font-size="13" font-weight="700">model_registry</text>
+    <text x="28" y="322" fill="#c084fc" font-family="monospace" font-size="10">Partial (name, active)</text>
+    <text x="28" y="337" fill="#64748b" font-family="monospace" font-size="9">WHERE is_active = TRUE</text>
+    <text x="28" y="352" fill="#64748b" font-family="monospace" font-size="9">ML model version tracking</text>
+  </g>
+
+  <!-- Legend -->
+  <g>
+    <rect x="270" y="290" width="494" height="60" rx="8" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+    <text x="290" y="310" fill="#94a3b8" font-family="system-ui" font-size="11" font-weight="600">Legend:</text>
+    <rect x="290" y="320" width="10" height="10" rx="2" fill="#86efac"/>
+    <text x="306" y="330" fill="#94a3b8" font-family="system-ui" font-size="10">GIST Spatial</text>
+    <rect x="400" y="320" width="10" height="10" rx="2" fill="#fbbf24"/>
+    <text x="416" y="330" fill="#94a3b8" font-family="system-ui" font-size="10">B-tree</text>
+    <rect x="480" y="320" width="10" height="10" rx="2" fill="#c084fc"/>
+    <text x="496" y="330" fill="#94a3b8" font-family="system-ui" font-size="10">Composite / Partial</text>
+    <rect x="630" y="320" width="10" height="10" rx="2" fill="#64748b"/>
+    <text x="646" y="330" fill="#94a3b8" font-family="system-ui" font-size="10">Metadata</text>
+  </g>
+</svg>

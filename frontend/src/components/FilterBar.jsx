@@ -28,22 +28,23 @@ export default function FilterBar({ filters, onFilterChange }) {
   const hasActiveFilters = filters.anomalyType || filters.minSeverity > 0
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap" role="toolbar" aria-label="Map filters">
       {/* Anomaly type pills */}
-      <div className="flex items-center gap-1.5 bg-card/95 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
-        <Filter className="w-4 h-4 text-muted-foreground mr-1" />
+      <div className="flex items-center gap-1.5 bg-card/95 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg" role="group" aria-label="Anomaly type filter">
+        <Filter className="w-4 h-4 text-muted-foreground mr-1" aria-hidden="true" />
 
         {ANOMALY_TYPES.map(({ key, label, icon: Icon, color, bg }) => (
           <button
             key={key}
             onClick={() => handleTypeToggle(key)}
+            aria-pressed={filters.anomalyType === key}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all border ${
               filters.anomalyType === key
                 ? `${bg} ${color}`
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary'
             }`}
           >
-            <Icon className="w-3.5 h-3.5" />
+            <Icon className="w-3.5 h-3.5" aria-hidden="true" />
             {label}
           </button>
         ))}
@@ -51,19 +52,24 @@ export default function FilterBar({ filters, onFilterChange }) {
 
       {/* Severity slider */}
       <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">Min Severity:</span>
+        <label htmlFor="severity-slider" className="text-xs text-muted-foreground whitespace-nowrap">Min Severity:</label>
         <input
+          id="severity-slider"
           type="range"
           min="0"
           max="1"
           step="0.05"
           value={filters.minSeverity}
           onChange={handleSeverityChange}
+          aria-valuenow={filters.minSeverity}
+          aria-valuemin={0}
+          aria-valuemax={1}
+          aria-label="Minimum severity threshold"
           className="w-24 h-1.5 appearance-none bg-secondary rounded-full cursor-pointer
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
             [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
         />
-        <span className="text-xs font-mono text-foreground w-8">
+        <span className="text-xs font-mono text-foreground w-8" aria-live="polite">
           {(filters.minSeverity * 100).toFixed(0)}%
         </span>
       </div>
@@ -73,8 +79,9 @@ export default function FilterBar({ filters, onFilterChange }) {
         <button
           onClick={clearFilters}
           className="flex items-center gap-1 bg-card/95 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg text-xs text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Clear all filters"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
           Clear
         </button>
       )}

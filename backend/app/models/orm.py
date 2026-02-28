@@ -3,7 +3,7 @@ SQLAlchemy ORM models with PostGIS geometry support.
 """
 from sqlalchemy import (
     Column, String, Float, Integer, BigInteger, Date, Text,
-    DateTime, Boolean, ForeignKey, func
+    DateTime, Boolean, ForeignKey, Index, func
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from geoalchemy2 import Geometry
@@ -13,6 +13,10 @@ from app.core.database import Base
 
 class Station(Base):
     __tablename__ = "stations"
+    __table_args__ = (
+        Index("idx_stations_country", "country"),
+        Index("idx_stations_latlon", "latitude", "longitude"),
+    )
 
     id = Column(String(20), primary_key=True)
     name = Column(String(255))
@@ -30,9 +34,13 @@ class Station(Base):
 
 class Observation(Base):
     __tablename__ = "observations"
+    __table_args__ = (
+        Index("idx_obs_station_date", "station_id", "obs_date"),
+        Index("idx_obs_date", "obs_date"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    station_id = Column(String(20), ForeignKey("stations.id"), nullable=False)
+    station_id = Column(String(20), ForeignKey("stations.id"), nullable=False, index=True)
     obs_date = Column(Date, nullable=False)
     tmax = Column(Float)
     tmin = Column(Float)
@@ -53,6 +61,12 @@ class Observation(Base):
 
 class Anomaly(Base):
     __tablename__ = "anomalies"
+    __table_args__ = (
+        Index("idx_anomalies_station", "station_id", "anomaly_date"),
+        Index("idx_anomalies_type", "anomaly_type"),
+        Index("idx_anomalies_severity", "severity"),
+        Index("idx_anomalies_date", "anomaly_date"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     station_id = Column(String(20), ForeignKey("stations.id"), nullable=False)
@@ -69,6 +83,9 @@ class Anomaly(Base):
 
 class Forecast(Base):
     __tablename__ = "forecasts"
+    __table_args__ = (
+        Index("idx_forecasts_station", "station_id", "variable", "forecast_date"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     station_id = Column(String(20), ForeignKey("stations.id"), nullable=False)
@@ -86,6 +103,10 @@ class Forecast(Base):
 
 class AnomalyTile(Base):
     __tablename__ = "anomaly_tiles"
+    __table_args__ = (
+        Index("idx_tiles_geohash_date", "geohash", "tile_date"),
+        Index("idx_tiles_date", "tile_date"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     geohash = Column(String(12), nullable=False, index=True)
@@ -120,6 +141,9 @@ class ModelRegistry(Base):
 
 class MonthlySummary(Base):
     __tablename__ = "monthly_summary"
+    __table_args__ = (
+        Index("idx_monthly_year_month", "year", "month"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     year = Column(Integer, nullable=False)

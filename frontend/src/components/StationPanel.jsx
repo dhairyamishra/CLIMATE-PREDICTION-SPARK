@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
@@ -8,6 +8,7 @@ import {
   AlertTriangle, ChevronDown, ChevronUp, X
 } from 'lucide-react'
 import { api } from '../services/api'
+import { StationPanelSkeleton } from './Skeleton'
 
 const SEVERITY_COLORS = {
   heatwave: '#ef4444',
@@ -78,27 +79,21 @@ export default function StationPanel({ stationId, stationData, onClose }) {
   }, [stationId, tsResolution])
 
   if (loading && !station) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-      </div>
-    )
+    return <StationPanelSkeleton />
   }
 
   const anomalies = station?.recent_anomalies || []
   const displayedAnomalies = showAllAnomalies ? anomalies : anomalies.slice(0, 5)
 
-  const tsData = timeSeries?.data
-    ? [...timeSeries.data].reverse().map(d => ({
-        ...d,
-        date: d.obs_date,
-      }))
-    : []
+  const tsData = useMemo(() => {
+    if (!timeSeries?.data) return []
+    return [...timeSeries.data].reverse().map(d => ({ ...d, date: d.obs_date }))
+  }, [timeSeries])
 
   const forecastData = forecast?.forecasts
-  const forecastTmax = forecastData?.tmax || []
-  const forecastTmin = forecastData?.tmin || []
-  const forecastPrcp = forecastData?.prcp || []
+  const forecastTmax = useMemo(() => forecastData?.tmax || [], [forecastData])
+  const forecastTmin = useMemo(() => forecastData?.tmin || [], [forecastData])
+  const forecastPrcp = useMemo(() => forecastData?.prcp || [], [forecastData])
 
   return (
     <div className="flex flex-col">

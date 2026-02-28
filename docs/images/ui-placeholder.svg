@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="450" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="800" height="450" rx="12" fill="url(#bg)"/>
+  <rect width="800" height="450" rx="12" fill="url(#grid)" opacity="0.5"/>
+
+  <!-- Browser chrome -->
+  <rect x="40" y="30" width="720" height="390" rx="8" fill="#020617" stroke="#334155" stroke-width="1"/>
+  <rect x="40" y="30" width="720" height="28" rx="8" fill="#1e293b"/>
+  <circle cx="58" cy="44" r="5" fill="#ef4444"/>
+  <circle cx="74" cy="44" r="5" fill="#f59e0b"/>
+  <circle cx="90" cy="44" r="5" fill="#22c55e"/>
+  <rect x="120" y="37" width="300" height="14" rx="4" fill="#0f172a"/>
+  <text x="270" y="48" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">localhost:5173</text>
+
+  <!-- Header bar -->
+  <rect x="40" y="58" width="720" height="36" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+  <circle cx="60" cy="76" r="8" fill="#3b82f6" opacity="0.3"/>
+  <text x="76" y="80" fill="#e2e8f0" font-family="system-ui" font-size="12" font-weight="700">Climate Anomaly Engine</text>
+  <rect x="660" y="68" width="80" height="18" rx="4" fill="#3b82f6" opacity="0.2"/>
+  <text x="700" y="81" text-anchor="middle" fill="#3b82f6" font-family="system-ui" font-size="10">Dashboard</text>
+
+  <!-- Sidebar -->
+  <rect x="40" y="94" width="200" height="326" fill="#0c1222" stroke="#334155" stroke-width="0.5"/>
+  <text x="140" y="118" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">Details</text>
+  <rect x="52" y="130" width="176" height="12" rx="3" fill="#1e293b"/>
+  <rect x="52" y="148" width="120" height="8" rx="2" fill="#1e293b" opacity="0.6"/>
+  <!-- Stat cards -->
+  <rect x="52" y="170" width="54" height="36" rx="4" fill="#1e293b"/>
+  <rect x="112" y="170" width="54" height="36" rx="4" fill="#1e293b"/>
+  <rect x="172" y="170" width="56" height="36" rx="4" fill="#1e293b"/>
+  <!-- Chart placeholder -->
+  <rect x="52" y="220" width="176" height="80" rx="6" fill="#1e293b"/>
+  <polyline points="60,280 80,260 100,270 120,250 140,265 160,240 180,255 200,235 220,245" stroke="#3b82f6" stroke-width="1.5" fill="none"/>
+  <!-- Anomaly list -->
+  <rect x="52" y="312" width="176" height="16" rx="3" fill="#ef4444" opacity="0.15"/>
+  <rect x="52" y="334" width="176" height="16" rx="3" fill="#3b82f6" opacity="0.15"/>
+  <rect x="52" y="356" width="176" height="16" rx="3" fill="#22c55e" opacity="0.15"/>
+
+  <!-- Map area -->
+  <rect x="240" y="94" width="520" height="326" fill="#0a0f1a"/>
+  <!-- Simulated map features -->
+  <circle cx="400" cy="220" r="6" fill="#ef4444" opacity="0.7"/>
+  <circle cx="420" cy="210" r="4" fill="#ef4444" opacity="0.5"/>
+  <circle cx="500" cy="250" r="8" fill="#ef4444" opacity="0.6"/>
+  <circle cx="350" cy="180" r="5" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="600" cy="300" r="7" fill="#22c55e" opacity="0.5"/>
+  <circle cx="450" cy="300" r="5" fill="#22c55e" opacity="0.4"/>
+  <circle cx="550" cy="180" r="4" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="380" cy="280" r="6" fill="#ef4444" opacity="0.4"/>
+  <circle cx="650" cy="200" r="5" fill="#f59e0b" opacity="0.5"/>
+  <circle cx="300" cy="240" r="4" fill="#3b82f6" opacity="0.5"/>
+  <!-- Heatmap blur effect -->
+  <circle cx="450" cy="230" r="60" fill="#ef4444" opacity="0.08"/>
+  <circle cx="380" cy="260" r="40" fill="#ef4444" opacity="0.06"/>
+  <circle cx="550" cy="280" r="50" fill="#22c55e" opacity="0.06"/>
+
+  <!-- Filter bar overlay -->
+  <rect x="254" y="104" width="280" height="28" rx="6" fill="#0f172a" stroke="#334155" stroke-width="0.5" opacity="0.95"/>
+  <rect x="262" y="110" width="56" height="16" rx="4" fill="#ef4444" opacity="0.2"/>
+  <text x="290" y="122" text-anchor="middle" fill="#fca5a5" font-family="system-ui" font-size="8">Heatwave</text>
+  <rect x="324" y="110" width="56" height="16" rx="4" fill="#3b82f6" opacity="0.2"/>
+  <text x="352" y="122" text-anchor="middle" fill="#93c5fd" font-family="system-ui" font-size="8">Cold Snap</text>
+  <rect x="386" y="110" width="56" height="16" rx="4" fill="#22c55e" opacity="0.2"/>
+  <text x="414" y="122" text-anchor="middle" fill="#86efac" font-family="system-ui" font-size="8">Precip</text>
+
+  <!-- Time slider at bottom -->
+  <rect x="254" y="386" width="492" height="24" rx="6" fill="#0f172a" stroke="#334155" stroke-width="0.5" opacity="0.95"/>
+  <line x1="274" y1="398" x2="726" y2="398" stroke="#334155" stroke-width="2"/>
+  <line x1="340" y1="398" x2="600" y2="398" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="340" cy="398" r="5" fill="#3b82f6"/>
+  <circle cx="600" cy="398" r="5" fill="#3b82f6"/>
+  <text x="274" y="406" fill="#64748b" font-family="monospace" font-size="7">1970</text>
+  <text x="716" y="406" fill="#64748b" font-family="monospace" font-size="7">2020</text>
+
+  <!-- Label -->
+  <text x="400" y="24" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">Frontend UI — Interactive Climate Anomaly Map</text>
+</svg>

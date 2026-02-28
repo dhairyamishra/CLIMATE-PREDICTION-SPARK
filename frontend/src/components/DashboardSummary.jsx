@@ -7,6 +7,7 @@ import {
   Globe, Flame, Snowflake, CloudRain, TrendingUp, AlertTriangle, Activity
 } from 'lucide-react'
 import { api } from '../services/api'
+import { DashboardSkeleton } from './Skeleton'
 
 const TYPE_COLORS = {
   heatwave: '#ef4444',
@@ -49,11 +50,7 @@ export default function DashboardSummary() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   if (error) {

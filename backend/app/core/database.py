@@ -13,6 +13,15 @@ engine = create_async_engine(
     echo=False,
     pool_size=20,
     max_overflow=10,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+    pool_timeout=30,
+    connect_args={
+        "server_settings": {
+            "statement_timeout": "30000",
+            "lock_timeout": "10000",
+        }
+    },
 )
 
 async_session = async_sessionmaker(

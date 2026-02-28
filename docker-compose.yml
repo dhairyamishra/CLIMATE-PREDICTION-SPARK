@@ -141,7 +141,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./backend/alembic/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/postgis/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-climate}"]
       interval: 10s

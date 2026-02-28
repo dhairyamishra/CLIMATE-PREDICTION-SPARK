@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 340" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="520" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="520" height="340" rx="12" fill="url(#bg)"/>
+
+  <!-- Terminal chrome -->
+  <rect x="12" y="12" width="496" height="316" rx="8" fill="#020617" stroke="#334155" stroke-width="1"/>
+  <circle cx="30" cy="28" r="5" fill="#ef4444"/>
+  <circle cx="46" cy="28" r="5" fill="#f59e0b"/>
+  <circle cx="62" cy="28" r="5" fill="#22c55e"/>
+  <text x="250" y="32" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="11">GET /health</text>
+
+  <!-- JSON output -->
+  <text x="24" y="58" fill="#64748b" font-family="monospace" font-size="12">$ curl localhost:8000/health | jq</text>
+  <text x="24" y="80" fill="#94a3b8" font-family="monospace" font-size="12">{</text>
+  <text x="40" y="98" fill="#7dd3fc" font-family="monospace" font-size="12">"status"</text>
+  <text x="120" y="98" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="132" y="98" fill="#86efac" font-family="monospace" font-size="12">"healthy"</text>
+  <text x="210" y="98" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="116" fill="#7dd3fc" font-family="monospace" font-size="12">"service"</text>
+  <text x="128" y="116" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="140" y="116" fill="#86efac" font-family="monospace" font-size="12">"climate-anomaly-engine"</text>
+  <text x="380" y="116" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="134" fill="#7dd3fc" font-family="monospace" font-size="12">"version"</text>
+  <text x="128" y="134" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="140" y="134" fill="#86efac" font-family="monospace" font-size="12">"1.0.0"</text>
+  <text x="200" y="134" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="152" fill="#7dd3fc" font-family="monospace" font-size="12">"uptime_seconds"</text>
+  <text x="192" y="152" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="204" y="152" fill="#fbbf24" font-family="monospace" font-size="12">3842</text>
+  <text x="240" y="152" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="170" fill="#7dd3fc" font-family="monospace" font-size="12">"database"</text>
+  <text x="136" y="170" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="148" y="170" fill="#86efac" font-family="monospace" font-size="12">"connected"</text>
+  <text x="252" y="170" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="188" fill="#7dd3fc" font-family="monospace" font-size="12">"db_latency_ms"</text>
+  <text x="184" y="188" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="196" y="188" fill="#fbbf24" font-family="monospace" font-size="12">1.2</text>
+  <text x="224" y="188" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="40" y="206" fill="#7dd3fc" font-family="monospace" font-size="12">"pool"</text>
+  <text x="88" y="206" fill="#94a3b8" font-family="monospace" font-size="12">: {</text>
+
+  <text x="56" y="224" fill="#7dd3fc" font-family="monospace" font-size="12">"size"</text>
+  <text x="100" y="224" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="112" y="224" fill="#fbbf24" font-family="monospace" font-size="12">20</text>
+  <text x="132" y="224" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+  <text x="148" y="224" fill="#7dd3fc" font-family="monospace" font-size="12">"checked_in"</text>
+  <text x="268" y="224" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="280" y="224" fill="#fbbf24" font-family="monospace" font-size="12">18</text>
+  <text x="300" y="224" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+
+  <text x="56" y="242" fill="#7dd3fc" font-family="monospace" font-size="12">"checked_out"</text>
+  <text x="192" y="242" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="204" y="242" fill="#fbbf24" font-family="monospace" font-size="12">2</text>
+  <text x="216" y="242" fill="#94a3b8" font-family="monospace" font-size="12">,</text>
+  <text x="232" y="242" fill="#7dd3fc" font-family="monospace" font-size="12">"overflow"</text>
+  <text x="320" y="242" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="332" y="242" fill="#fbbf24" font-family="monospace" font-size="12">0</text>
+
+  <text x="40" y="260" fill="#94a3b8" font-family="monospace" font-size="12">},</text>
+
+  <text x="40" y="278" fill="#7dd3fc" font-family="monospace" font-size="12">"cache_entries"</text>
+  <text x="180" y="278" fill="#94a3b8" font-family="monospace" font-size="12">:</text>
+  <text x="192" y="278" fill="#fbbf24" font-family="monospace" font-size="12">3</text>
+
+  <text x="24" y="296" fill="#94a3b8" font-family="monospace" font-size="12">}</text>
+
+  <!-- Response time badge -->
+  <rect x="360" y="44" width="136" height="20" rx="4" fill="#22c55e" opacity="0.15"/>
+  <text x="428" y="58" text-anchor="middle" fill="#22c55e" font-family="monospace" font-size="10">X-Response-Time: 1.4ms</text>
+</svg>

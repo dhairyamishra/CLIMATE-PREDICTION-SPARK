@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { api } from '../services/api'
 import { useDebounce } from '../hooks/useApi'
+import { MapLoadingSkeleton } from './Skeleton'
 
 const ANOMALY_COLORS = {
   heatwave: '#ef4444',
@@ -18,6 +19,7 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
   const debouncedFilters = useDebounce(filters, 500)
 
   // Initialize map
@@ -227,6 +229,7 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
     if (!mapLoaded || !mapRef.current) return
 
     const loadData = async () => {
+      setDataLoading(true)
       try {
         const [anomalyData, stationData] = await Promise.all([
           api.getAnomalies({
@@ -266,6 +269,8 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
         }
       } catch (err) {
         console.error('Failed to load map data:', err)
+      } finally {
+        setDataLoading(false)
       }
     }
 
@@ -273,6 +278,9 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
   }, [mapLoaded, debouncedFilters])
 
   return (
-    <div ref={mapContainer} className="w-full h-full" />
+    <div className="relative w-full h-full">
+      <div ref={mapContainer} className="w-full h-full" role="application" aria-label="Climate anomaly map" />
+      {dataLoading && <MapLoadingSkeleton />}
+    </div>
   )
 }

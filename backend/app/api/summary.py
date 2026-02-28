@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.database import get_db
+from app.core.cache import response_cache, cache_key
 
 router = APIRouter()
 
@@ -14,7 +15,11 @@ router = APIRouter()
 async def get_global_summary(
     db: AsyncSession = Depends(get_db),
 ):
-    """Get global dashboard statistics."""
+    """Get global dashboard statistics. Cached for 60s."""
+    cached_result = await response_cache.get("global_summary")
+    if cached_result is not None:
+        return cached_result
+
     stats_query = text("""
         SELECT
             (SELECT COUNT(*) FROM stations) as total_stations,
@@ -51,7 +56,7 @@ async def get_global_summary(
     monthly_result = await db.execute(monthly_query)
     monthly = monthly_result.fetchall()
 
-    return {
+    response = {
         "total_stations": stats.total_stations,
         "total_anomalies": stats.total_anomalies,
         "heatwave_count": stats.heatwave_count,
@@ -80,3 +85,6 @@ async def get_global_summary(
             for m in monthly
         ],
     }
+
+    await response_cache.set("global_summary", response, ttl=60)
+    return response
