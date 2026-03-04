@@ -15,16 +15,19 @@ const SEVERITY_RADIUS = {
   max: 20,
 }
 
+const EMPTY_FC = { type: 'FeatureCollection', features: [] }
+
 export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoundsChange }) {
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
-  const [mapLoaded, setMapLoaded] = useState(false)
-  const [dataLoading, setDataLoading] = useState(true)
+  const [mapReady, setMapReady] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
   const debouncedFilters = useDebounce(filters, 500)
+  const pendingData = useRef(null)
 
-  // Initialize map
+  // Initialize map with all sources/layers inline so they exist before tiles load
   useEffect(() => {
-    if (mapRef.current) return
+    if (mapRef.current && mapContainer.current?.childElementCount > 0) return
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
@@ -42,6 +45,14 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
             tileSize: 256,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
           },
+          'anomaly-heatmap': {
+            type: 'geojson',
+            data: EMPTY_FC,
+          },
+          'station-points': {
+            type: 'geojson',
+            data: EMPTY_FC,
+          },
         },
         layers: [
           {
@@ -50,6 +61,64 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
             source: 'osm-tiles',
             minzoom: 0,
             maxzoom: 19,
+          },
+          {
+            id: 'anomaly-heat',
+            type: 'heatmap',
+            source: 'anomaly-heatmap',
+            maxzoom: 12,
+            paint: {
+              'heatmap-weight': ['interpolate', ['linear'], ['get', 'severity'], 0, 0, 1, 1],
+              'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 12, 3],
+              'heatmap-color': [
+                'interpolate', ['linear'], ['heatmap-density'],
+                0, 'rgba(0,0,0,0)',
+                0.1, 'rgba(30,60,180,0.4)',
+                0.3, 'rgba(50,150,220,0.5)',
+                0.5, 'rgba(80,220,100,0.6)',
+                0.7, 'rgba(255,220,50,0.7)',
+                0.9, 'rgba(255,100,30,0.8)',
+                1, 'rgba(220,30,30,0.9)',
+              ],
+              'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 8, 6, 30, 12, 50],
+              'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 12, 0.3],
+            },
+          },
+          {
+            id: 'anomaly-circles',
+            type: 'circle',
+            source: 'anomaly-heatmap',
+            minzoom: 5,
+            paint: {
+              'circle-radius': [
+                'interpolate', ['linear'], ['get', 'severity'],
+                0, SEVERITY_RADIUS.min,
+                1, SEVERITY_RADIUS.max,
+              ],
+              'circle-color': [
+                'match', ['get', 'anomaly_type'],
+                'heatwave', ANOMALY_COLORS.heatwave,
+                'cold_snap', ANOMALY_COLORS.cold_snap,
+                'precip_extreme', ANOMALY_COLORS.precip_extreme,
+                '#888888',
+              ],
+              'circle-opacity': 0.7,
+              'circle-stroke-width': 1,
+              'circle-stroke-color': 'rgba(255,255,255,0.3)',
+            },
+          },
+          {
+            id: 'stations',
+            type: 'circle',
+            source: 'station-points',
+            minzoom: 4,
+            paint: {
+              'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 8, 5, 12, 8],
+              'circle-color': '#94a3b8',
+              'circle-opacity': 0.6,
+              'circle-stroke-width': 1,
+              'circle-stroke-color': 'rgba(255,255,255,0.2)',
+            },
           },
         ],
       },
@@ -61,87 +130,16 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
 
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right')
 
-    map.on('load', () => {
-      // Add anomaly heatmap source
-      map.addSource('anomaly-heatmap', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
+    let ready = false
+    const markReady = () => {
+      if (ready) return
+      ready = true
+      setMapReady(true)
+    }
 
-      // Add station points source
-      map.addSource('station-points', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
+    map.on('load', markReady)
+    const fallbackTimer = setTimeout(markReady, 2000)
 
-      // Heatmap layer
-      map.addLayer({
-        id: 'anomaly-heat',
-        type: 'heatmap',
-        source: 'anomaly-heatmap',
-        maxzoom: 12,
-        paint: {
-          'heatmap-weight': ['interpolate', ['linear'], ['get', 'severity'], 0, 0, 1, 1],
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 12, 3],
-          'heatmap-color': [
-            'interpolate', ['linear'], ['heatmap-density'],
-            0, 'rgba(0,0,0,0)',
-            0.1, 'rgba(30,60,180,0.4)',
-            0.3, 'rgba(50,150,220,0.5)',
-            0.5, 'rgba(80,220,100,0.6)',
-            0.7, 'rgba(255,220,50,0.7)',
-            0.9, 'rgba(255,100,30,0.8)',
-            1, 'rgba(220,30,30,0.9)',
-          ],
-          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 8, 6, 30, 12, 50],
-          'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 12, 0.3],
-        },
-      })
-
-      // Anomaly circle layer (visible at higher zoom)
-      map.addLayer({
-        id: 'anomaly-circles',
-        type: 'circle',
-        source: 'anomaly-heatmap',
-        minzoom: 5,
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['get', 'severity'],
-            0, SEVERITY_RADIUS.min,
-            1, SEVERITY_RADIUS.max,
-          ],
-          'circle-color': [
-            'match', ['get', 'anomaly_type'],
-            'heatwave', ANOMALY_COLORS.heatwave,
-            'cold_snap', ANOMALY_COLORS.cold_snap,
-            'precip_extreme', ANOMALY_COLORS.precip_extreme,
-            '#888888',
-          ],
-          'circle-opacity': 0.7,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': 'rgba(255,255,255,0.3)',
-        },
-      })
-
-      // Station point layer
-      map.addLayer({
-        id: 'stations',
-        type: 'circle',
-        source: 'station-points',
-        minzoom: 4,
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 8, 5, 12, 8],
-          'circle-color': '#94a3b8',
-          'circle-opacity': 0.6,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': 'rgba(255,255,255,0.2)',
-        },
-      })
-
-      setMapLoaded(true)
-    })
-
-    // Click handler for anomaly circles
     map.on('click', 'anomaly-circles', (e) => {
       const feature = e.features[0]
       if (feature) {
@@ -157,7 +155,6 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
       }
     })
 
-    // Click handler for station points
     map.on('click', 'stations', (e) => {
       const feature = e.features[0]
       if (feature) {
@@ -172,13 +169,11 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
       }
     })
 
-    // Hover cursors
     map.on('mouseenter', 'anomaly-circles', () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', 'anomaly-circles', () => { map.getCanvas().style.cursor = '' })
     map.on('mouseenter', 'stations', () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', 'stations', () => { map.getCanvas().style.cursor = '' })
 
-    // Popup on hover for anomaly circles
     const popup = new maplibregl.Popup({
       closeButton: false,
       closeOnClick: false,
@@ -208,7 +203,6 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
       popup.remove()
     })
 
-    // Track bounds
     map.on('moveend', () => {
       const bounds = map.getBounds()
       onBoundsChange?.({
@@ -221,13 +215,49 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
 
     mapRef.current = map
 
-    return () => map.remove()
+    return () => { clearTimeout(fallbackTimer); map.remove(); mapRef.current = null }
   }, [])
 
-  // Fetch and update anomaly data when filters change
-  useEffect(() => {
-    if (!mapLoaded || !mapRef.current) return
+  const applyDataToMap = useCallback((anomalyData, stationData) => {
+    const map = mapRef.current
+    if (!map) return false
 
+    let heatmapSrc, stationSrc
+    try {
+      heatmapSrc = map.getSource('anomaly-heatmap')
+      stationSrc = map.getSource('station-points')
+    } catch { return false }
+
+    if (!heatmapSrc || !stationSrc) return false
+
+    if (anomalyData?.features) {
+      heatmapSrc.setData(anomalyData)
+    }
+
+    if (stationData) {
+      const stationGeoJSON = {
+        type: 'FeatureCollection',
+        features: stationData.map(s => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [s.longitude, s.latitude],
+          },
+          properties: {
+            id: s.id,
+            name: s.name,
+            country: s.country,
+            record_count: s.record_count,
+          },
+        })),
+      }
+      stationSrc.setData(stationGeoJSON)
+    }
+    return true
+  }, [mapReady])
+
+  useEffect(() => {
+    let cancelled = false
     const loadData = async () => {
       setDataLoading(true)
       try {
@@ -241,41 +271,28 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
           }),
           api.getStations({ limit: 2000 }),
         ])
+        if (cancelled) return
 
-        // Update anomaly heatmap
-        if (anomalyData?.features) {
-          mapRef.current.getSource('anomaly-heatmap')?.setData(anomalyData)
-        }
-
-        // Update station points
-        if (stationData) {
-          const stationGeoJSON = {
-            type: 'FeatureCollection',
-            features: stationData.map(s => ({
-              type: 'Feature',
-              geometry: {
-                type: 'Point',
-                coordinates: [s.longitude, s.latitude],
-              },
-              properties: {
-                id: s.id,
-                name: s.name,
-                country: s.country,
-                record_count: s.record_count,
-              },
-            })),
-          }
-          mapRef.current.getSource('station-points')?.setData(stationGeoJSON)
+        if (!applyDataToMap(anomalyData, stationData)) {
+          pendingData.current = { anomalyData, stationData }
         }
       } catch (err) {
         console.error('Failed to load map data:', err)
       } finally {
-        setDataLoading(false)
+        if (!cancelled) setDataLoading(false)
       }
     }
-
     loadData()
-  }, [mapLoaded, debouncedFilters])
+    return () => { cancelled = true }
+  }, [debouncedFilters, applyDataToMap])
+
+  useEffect(() => {
+    if (mapReady && pendingData.current) {
+      const { anomalyData, stationData } = pendingData.current
+      applyDataToMap(anomalyData, stationData)
+      pendingData.current = null
+    }
+  }, [mapReady, applyDataToMap])
 
   return (
     <div className="relative w-full h-full">

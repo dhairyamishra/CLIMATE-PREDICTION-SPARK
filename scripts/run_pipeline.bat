@@ -16,13 +16,13 @@ if %ERRORLEVEL% neq 0 echo WARNING: Seed data generation encountered issues.
 
 echo.
 echo [Step 2/7] Uploading seed data to HDFS...
-docker-compose exec spark-master python /opt/scripts/upload_to_hdfs.py
+docker-compose exec spark-master spark-submit --master local[1] /opt/scripts/upload_to_hdfs.py
 if %ERRORLEVEL% neq 0 echo WARNING: HDFS upload encountered issues.
 
 echo.
 echo [Step 3/7] Ingesting raw data into Parquet...
-docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/ghcn_daily.py stations
-docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/ghcn_daily.py observations
+docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/ghcn_daily.py stations /climate-data/raw/station-metadata/ghcnd-stations.txt
+docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/ghcn_daily.py observations /climate-data/raw/ghcn-daily/*.csv
 docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/era5_reanalysis.py
 docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ingestion/giss_temperature.py
 

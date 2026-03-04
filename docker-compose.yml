@@ -69,10 +69,11 @@ services:
     env_file:
       - .env
     environment:
-      - SPARK_MODE=master
       - SPARK_MASTER_HOST=spark-master
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
     ports:
       - "8080:8080"   # Spark Master Web UI
       - "7077:7077"   # Spark Master RPC
@@ -93,10 +94,11 @@ services:
     env_file:
       - .env
     environment:
-      - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
+      - SPARK_NO_DAEMONIZE=true
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
     depends_on:
       - spark-master
     volumes:
@@ -113,10 +115,11 @@ services:
     env_file:
       - .env
     environment:
-      - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
+      - SPARK_NO_DAEMONIZE=true
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
     depends_on:
       - spark-master
     volumes:

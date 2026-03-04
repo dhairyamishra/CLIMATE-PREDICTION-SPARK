@@ -13,11 +13,11 @@ export default function App() {
   const [showDashboard, setShowDashboard] = useState(false)
   const [filters, setFilters] = useState({
     startDate: '1970-01-01',
-    endDate: '2020-12-31',
+    endDate: '2025-12-31',
     anomalyType: null,
     minSeverity: 0,
   })
-  const [timeRange, setTimeRange] = useState({ start: 1970, end: 2020 })
+  const [timeRange, setTimeRange] = useState({ start: 1970, end: 2025 })
   const [mapBounds, setMapBounds] = useState(null)
 
   const handleStationSelect = useCallback((station) => {
@@ -113,7 +113,7 @@ export default function App() {
           <div className="absolute bottom-6 left-16 right-16 z-10">
             <TimeSlider
               startYear={1970}
-              endYear={2020}
+              endYear={2025}
               value={timeRange}
               onChange={handleTimeChange}
             />
