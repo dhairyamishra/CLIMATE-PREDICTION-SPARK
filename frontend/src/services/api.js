@@ -98,4 +98,62 @@ export const api = {
 
   // Summary
   getSummary: () => fetchJSON('/summary'),
+
+  // Climate indices
+  getIndices: () => fetchJSON('/indices'),
+  getIndexSeries: (indexName, params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/indices/${indexName}?${query}`)
+  },
+
+  // Extreme value stats
+  getStationExtremes: (stationId, params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/stations/${stationId}/extremes?${query}`)
+  },
+
+  // Trend analysis
+  getStationTrends: (stationId, params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/stations/${stationId}/trends?${query}`)
+  },
+
+  // Climate projections
+  getStationProjections: (stationId, params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/stations/${stationId}/projections?${query}`)
+  },
+  getProjectionScenarios: () => fetchJSON('/projections/scenarios'),
+
+  // Data export
+  exportTimeSeries: (stationId, format = 'csv') =>
+    fetchJSON(`/export/timeseries/${stationId}?format=${format}`),
+  // Wind data
+  getWind: (params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/wind?${query}`)
+  },
+
+  exportAnomalies: (params = {}) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) query.append(key, value)
+    })
+    return fetchJSON(`/export/anomalies?${query}`)
+  },
 }

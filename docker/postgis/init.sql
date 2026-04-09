@@ -115,6 +115,110 @@ CREATE TABLE IF NOT EXISTS monthly_summary (
     global_temp_anomaly     DOUBLE PRECISION
 );
 
+-- Phase 1.1: Climate indices (ENSO, NAO, PDO, AMO, IOD)
+CREATE TABLE IF NOT EXISTS climate_indices (
+    id                  BIGSERIAL PRIMARY KEY,
+    index_date          DATE NOT NULL,
+    index_name          VARCHAR(20) NOT NULL,
+    value               DOUBLE PRECISION NOT NULL,
+    anomaly             DOUBLE PRECISION,
+    description         TEXT,
+    source              VARCHAR(100),
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Phase 1.2: Extreme value statistics (GEV/GPD return periods)
+CREATE TABLE IF NOT EXISTS extreme_value_stats (
+    id                  BIGSERIAL PRIMARY KEY,
+    station_id          VARCHAR(20) NOT NULL REFERENCES stations(id),
+    variable            VARCHAR(20) NOT NULL,
+    distribution        VARCHAR(20) NOT NULL DEFAULT 'gev',
+    return_period       INTEGER NOT NULL,
+    return_level        DOUBLE PRECISION NOT NULL,
+    lower_ci            DOUBLE PRECISION,
+    upper_ci            DOUBLE PRECISION,
+    shape_param         DOUBLE PRECISION,
+    location_param      DOUBLE PRECISION,
+    scale_param         DOUBLE PRECISION,
+    n_years             INTEGER,
+    computed_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Phase 1.3: Trend analysis (Mann-Kendall + Sen's slope)
+CREATE TABLE IF NOT EXISTS trend_analysis (
+    id                  BIGSERIAL PRIMARY KEY,
+    station_id          VARCHAR(20) NOT NULL REFERENCES stations(id),
+    variable            VARCHAR(20) NOT NULL,
+    period_start        INTEGER NOT NULL,
+    period_end          INTEGER NOT NULL,
+    trend_direction     VARCHAR(20) NOT NULL,
+    sens_slope          DOUBLE PRECISION NOT NULL,
+    p_value             DOUBLE PRECISION NOT NULL,
+    z_statistic         DOUBLE PRECISION,
+    tau                 DOUBLE PRECISION,
+    slope_per_decade    DOUBLE PRECISION,
+    ci_lower            DOUBLE PRECISION,
+    ci_upper            DOUBLE PRECISION,
+    significant         BOOLEAN DEFAULT FALSE,
+    computed_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Phase 2.3: Climate projections (CMIP6 SSP scenarios)
+CREATE TABLE IF NOT EXISTS climate_projections (
+    id                  BIGSERIAL PRIMARY KEY,
+    station_id          VARCHAR(20) REFERENCES stations(id),
+    projection_date     DATE NOT NULL,
+    scenario            VARCHAR(20) NOT NULL,
+    variable            VARCHAR(20) NOT NULL,
+    predicted_value     DOUBLE PRECISION NOT NULL,
+    lower_bound         DOUBLE PRECISION,
+    upper_bound         DOUBLE PRECISION,
+    model_name          VARCHAR(100),
+    ensemble_size       INTEGER,
+    bias_corrected      BOOLEAN DEFAULT FALSE
+);
+
+-- Phase 4.3: User management, saved views, alerts, annotations
+CREATE TABLE IF NOT EXISTS users (
+    id              VARCHAR(20) PRIMARY KEY,
+    username        VARCHAR(50) UNIQUE NOT NULL,
+    email           VARCHAR(255),
+    role            VARCHAR(20) DEFAULT 'researcher',
+    token_hash      VARCHAR(64) NOT NULL,
+    is_active       BOOLEAN DEFAULT TRUE,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS saved_views (
+    id              VARCHAR(20) PRIMARY KEY,
+    user_id         VARCHAR(20) REFERENCES users(id),
+    name            VARCHAR(200) NOT NULL,
+    description     TEXT,
+    view_state      JSONB NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS alert_subscriptions (
+    id              VARCHAR(20) PRIMARY KEY,
+    user_id         VARCHAR(20) REFERENCES users(id),
+    station_id      VARCHAR(20) REFERENCES stations(id),
+    alert_type      VARCHAR(50) NOT NULL,
+    min_severity    DOUBLE PRECISION DEFAULT 0.5,
+    email           VARCHAR(255),
+    is_active       BOOLEAN DEFAULT TRUE,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS annotations (
+    id              VARCHAR(20) PRIMARY KEY,
+    user_id         VARCHAR(20) REFERENCES users(id),
+    station_id      VARCHAR(20) NOT NULL REFERENCES stations(id),
+    annotation_date DATE,
+    note            TEXT NOT NULL,
+    category        VARCHAR(50) DEFAULT 'observation',
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ---- Performance Indexes -----------------------------------
 
 -- Stations: spatial + geographic filters
@@ -148,3 +252,25 @@ CREATE INDEX IF NOT EXISTS idx_monthly_year_month   ON monthly_summary (year DES
 
 -- Model registry: active model lookups
 CREATE INDEX IF NOT EXISTS idx_model_active         ON model_registry (model_name, is_active) WHERE is_active = TRUE;
+
+-- Climate indices
+CREATE INDEX IF NOT EXISTS idx_climate_indices_name_date ON climate_indices (index_name, index_date DESC);
+CREATE INDEX IF NOT EXISTS idx_climate_indices_date      ON climate_indices (index_date DESC);
+
+-- Extreme value stats
+CREATE INDEX IF NOT EXISTS idx_evs_station_var  ON extreme_value_stats (station_id, variable, return_period);
+
+-- Trend analysis
+CREATE INDEX IF NOT EXISTS idx_trend_station_var ON trend_analysis (station_id, variable);
+CREATE INDEX IF NOT EXISTS idx_trend_significant ON trend_analysis (significant) WHERE significant = TRUE;
+
+-- Climate projections
+CREATE INDEX IF NOT EXISTS idx_projections_station  ON climate_projections (station_id, scenario, variable, projection_date);
+CREATE INDEX IF NOT EXISTS idx_projections_scenario ON climate_projections (scenario, variable);
+
+-- Users & features
+CREATE INDEX IF NOT EXISTS idx_users_token ON users (token_hash) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_saved_views_user ON saved_views (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_user ON alert_subscriptions (user_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_alerts_station ON alert_subscriptions (station_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_annotations_station ON annotations (station_id, annotation_date DESC);

@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import {
-  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ReferenceLine
+  LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts'
 import {
   MapPin, Thermometer, CloudRain, Mountain, Calendar, TrendingUp,
-  AlertTriangle, ChevronDown, ChevronUp, X
+  AlertTriangle, ChevronDown, ChevronUp, X, Download, ArrowUp, ArrowDown, Minus
 } from 'lucide-react'
 import { api } from '../services/api'
 import { StationPanelSkeleton } from './Skeleton'
+import ClimateStripes from './ClimateStripes'
+import ProjectionChart from './ProjectionChart'
 
 const SEVERITY_COLORS = {
   heatwave: '#ef4444',
@@ -50,6 +52,8 @@ export default function StationPanel({ stationId, stationData, onClose }) {
   const [station, setStation] = useState(stationData)
   const [timeSeries, setTimeSeries] = useState(null)
   const [forecast, setForecast] = useState(null)
+  const [extremes, setExtremes] = useState(null)
+  const [trends, setTrends] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('timeseries')
   const [tsResolution, setTsResolution] = useState('monthly')
@@ -59,15 +63,19 @@ export default function StationPanel({ stationId, stationData, onClose }) {
     const loadData = async () => {
       setLoading(true)
       try {
-        const [stationDetail, tsData, forecastData] = await Promise.allSettled([
+        const [stationDetail, tsData, forecastData, extremeData, trendData] = await Promise.allSettled([
           api.getStation(stationId),
           api.getTimeSeries(stationId, { resolution: tsResolution, limit: 5000 }),
           api.getStationForecast(stationId),
+          api.getStationExtremes(stationId),
+          api.getStationTrends(stationId),
         ])
 
         if (stationDetail.status === 'fulfilled') setStation(stationDetail.value)
         if (tsData.status === 'fulfilled') setTimeSeries(tsData.value)
         if (forecastData.status === 'fulfilled') setForecast(forecastData.value)
+        if (extremeData.status === 'fulfilled') setExtremes(extremeData.value)
+        if (trendData.status === 'fulfilled') setTrends(trendData.value)
       } catch (err) {
         console.error('Error loading station data:', err)
       } finally {
@@ -110,9 +118,20 @@ export default function StationPanel({ stationId, stationData, onClose }) {
               {station?.country && <span className="ml-1">· {station.country}</span>}
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-secondary transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                window.open(`/api/export/timeseries/${stationId}?format=csv`, '_blank')
+              }}
+              className="p-1 rounded hover:bg-secondary transition-colors"
+              title="Export data as CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <button onClick={onClose} className="p-1 rounded hover:bg-secondary transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Quick stats */}
@@ -140,16 +159,18 @@ export default function StationPanel({ stationId, stationData, onClose }) {
       </div>
 
       {/* Tab navigation */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border overflow-x-auto">
         {[
-          { key: 'timeseries', label: 'Time Series' },
+          { key: 'timeseries', label: 'Series' },
           { key: 'forecast', label: 'Forecast' },
-          { key: 'anomalies', label: `Anomalies (${anomalies.length})` },
+          { key: 'projections', label: 'Projections' },
+          { key: 'extremes', label: 'Extremes' },
+          { key: 'anomalies', label: `Events (${anomalies.length})` },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors ${
+            className={`flex-1 px-2 py-2.5 text-[11px] font-medium transition-colors whitespace-nowrap ${
               activeTab === tab.key
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -226,6 +247,31 @@ export default function StationPanel({ stationId, stationData, onClose }) {
                 {loading ? 'Loading time series...' : 'No time series data available'}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'timeseries' && tsData.length > 5 && (
+          <div className="mt-4">
+            <ClimateStripes
+              title="Warming Stripes"
+              data={(() => {
+                const yearly = {}
+                tsData.forEach(d => {
+                  const year = d.date?.slice(0, 4)
+                  if (!year) return
+                  if (!yearly[year]) yearly[year] = { sum: 0, count: 0 }
+                  const val = d.tmax != null ? d.tmax : d.tavg
+                  if (val != null) {
+                    yearly[year].sum += val
+                    yearly[year].count++
+                  }
+                })
+                return Object.entries(yearly)
+                  .filter(([, v]) => v.count > 0)
+                  .map(([year, v]) => ({ year, value: v.sum / v.count }))
+                  .sort((a, b) => a.year.localeCompare(b.year))
+              })()}
+            />
           </div>
         )}
 
@@ -307,6 +353,100 @@ export default function StationPanel({ stationId, stationData, onClose }) {
             ) : (
               <div className="text-sm text-muted-foreground text-center py-8">
                 {loading ? 'Loading forecasts...' : 'No forecast data available for this station'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'projections' && (
+          <ProjectionChart stationId={stationId} />
+        )}
+
+        {activeTab === 'extremes' && (
+          <div className="space-y-4">
+            {/* Trend indicators */}
+            {trends?.trends?.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">Trend Analysis (Mann-Kendall)</h4>
+                <div className="space-y-1.5">
+                  {trends.trends.map((t, i) => (
+                    <div key={i} className="flex items-center justify-between bg-secondary/30 rounded p-2">
+                      <div className="flex items-center gap-2">
+                        {t.trend_direction === 'increasing' ? (
+                          <ArrowUp className="w-3.5 h-3.5 text-heatwave" />
+                        ) : t.trend_direction === 'decreasing' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-coldsnap" />
+                        ) : (
+                          <Minus className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                        <span className="text-xs font-medium uppercase">{t.variable}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {t.slope_per_decade > 0 ? '+' : ''}{t.slope_per_decade?.toFixed(2)}/decade
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          t.significant ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'
+                        }`}>
+                          {t.significant ? `p=${t.p_value?.toFixed(3)}` : 'not sig.'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Return period chart */}
+            {extremes?.extremes?.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">Return Periods (GEV)</h4>
+                {extremes.extremes.map((ev, i) => (
+                  <div key={i} className="mb-3">
+                    <div className="text-[10px] font-medium uppercase mb-1 text-muted-foreground">{ev.variable}</div>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart
+                        data={ev.return_levels}
+                        margin={{ top: 5, right: 5, bottom: 5, left: -10 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(217,33%,15%)" />
+                        <XAxis
+                          dataKey="return_period"
+                          tick={{ fontSize: 9, fill: 'hsl(215,20%,55%)' }}
+                          tickFormatter={v => `${v}yr`}
+                        />
+                        <YAxis tick={{ fontSize: 9, fill: 'hsl(215,20%,55%)' }} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(222,47%,10%)',
+                            border: '1px solid hsl(217,33%,25%)',
+                            borderRadius: 8,
+                            fontSize: 11,
+                          }}
+                          formatter={(v) => [v?.toFixed(1), 'Return Level']}
+                          labelFormatter={v => `${v}-year return`}
+                        />
+                        <Bar dataKey="return_level" radius={[3, 3, 0, 0]}>
+                          {ev.return_levels.map((_, idx) => (
+                            <Cell
+                              key={idx}
+                              fill={['#22c55e', '#f59e0b', '#f97316', '#ef4444'][idx] || '#3b82f6'}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">
+                      GEV fit: shape={ev.shape?.toFixed(3)}, n={ev.n_years}yr
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!trends?.trends?.length && !extremes?.extremes?.length && (
+              <div className="text-sm text-muted-foreground text-center py-8">
+                No extreme value or trend data available
               </div>
             )}
           </div>

@@ -119,6 +119,74 @@ class TilePoint(BaseModel):
     precip_extreme_count: int = 0
 
 
+# --- Climate Index Schemas ---
+class ClimateIndexPoint(BaseModel):
+    index_date: date
+    index_name: str
+    value: float
+    anomaly: Optional[float] = None
+
+
+class ClimateIndexSeries(BaseModel):
+    index_name: str
+    description: str
+    data: list[ClimateIndexPoint]
+    total_records: int
+
+
+# --- Extreme Value Schemas ---
+class ReturnLevelPoint(BaseModel):
+    return_period: int
+    return_level: float
+    lower_ci: Optional[float] = None
+    upper_ci: Optional[float] = None
+
+
+class ExtremeValueResult(BaseModel):
+    station_id: str
+    variable: str
+    distribution: str
+    shape: Optional[float] = None
+    location: Optional[float] = None
+    scale: Optional[float] = None
+    n_years: Optional[int] = None
+    return_levels: list[ReturnLevelPoint]
+
+
+# --- Trend Analysis Schemas ---
+class TrendResult(BaseModel):
+    station_id: str
+    variable: str
+    period_start: int
+    period_end: int
+    trend_direction: str
+    sens_slope: float
+    slope_per_decade: Optional[float] = None
+    p_value: float
+    z_statistic: Optional[float] = None
+    tau: Optional[float] = None
+    ci_lower: Optional[float] = None
+    ci_upper: Optional[float] = None
+    significant: bool
+
+
+# --- Climate Projection Schemas ---
+class ProjectionPoint(BaseModel):
+    projection_date: date
+    variable: str
+    predicted_value: float
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
+    model_name: Optional[str] = None
+
+
+class StationProjection(BaseModel):
+    station_id: str
+    scenario: str
+    variable: str
+    projections: list[ProjectionPoint]
+
+
 # --- Query Parameters ---
 class AnomalyQuery(BaseModel):
     min_lat: float = Field(-90, ge=-90, le=90)

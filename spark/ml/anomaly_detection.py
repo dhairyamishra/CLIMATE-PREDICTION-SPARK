@@ -1,7 +1,7 @@
 """
-Anomaly Detection using Isolation Forest on Spark MLlib.
+Anomaly Detection using hybrid Isolation Forest + LSTM-Autoencoder ensemble.
 Detects heatwaves, cold snaps, and precipitation extremes from
-multi-variate climate features.
+multi-variate climate features with extreme-value-aware scoring.
 """
 import os
 import sys
@@ -27,7 +27,6 @@ from config.spark_config import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Features for anomaly detection
 ANOMALY_FEATURES = [
     "tmax_zscore_30d",
     "tmin_zscore_30d",
@@ -38,6 +37,9 @@ ANOMALY_FEATURES = [
     "tmin_residual",
     "prcp_residual",
 ]
+
+SEQUENCE_LENGTH = 30
+LSTM_FEATURES = ["tmax_zscore_30d", "tmin_zscore_30d", "prcp_zscore_30d"]
 
 ANOMALY_OUTPUT_SCHEMA = StructType([
     StructField("station_id", StringType(), False),
@@ -56,11 +58,88 @@ ANOMALY_OUTPUT_SCHEMA = StructType([
 ])
 
 
-def detect_anomalies_isolation_forest(pdf: pd.DataFrame) -> pd.DataFrame:
+def _build_sequences(data, seq_len):
+    """Build overlapping sequences for the LSTM autoencoder."""
+    sequences = []
+    for i in range(len(data) - seq_len + 1):
+        sequences.append(data[i:i + seq_len])
+    return np.array(sequences) if sequences else np.empty((0, seq_len, data.shape[1]))
+
+
+def _lstm_autoencoder_scores(pdf, available_features):
     """
-    Apply Isolation Forest anomaly detection per station.
-    Uses sklearn IsolationForest for the actual detection,
-    parallelized across stations via applyInPandas.
+    Train a simple LSTM-Autoencoder and return reconstruction error scores.
+    Uses Keras with a lightweight architecture optimized for per-station fitting.
+    Falls back to zeros if TensorFlow is unavailable.
+    """
+    try:
+        import tensorflow as tf
+        from tensorflow import keras
+    except ImportError:
+        return np.zeros(len(pdf))
+
+    lstm_feats = [f for f in LSTM_FEATURES if f in available_features]
+    if len(lstm_feats) < 2:
+        return np.zeros(len(pdf))
+
+    data = pdf[lstm_feats].fillna(0).values
+    if len(data) < SEQUENCE_LENGTH * 3:
+        return np.zeros(len(pdf))
+
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    data_scaled = scaler.fit_transform(data)
+
+    sequences = _build_sequences(data_scaled, SEQUENCE_LENGTH)
+    if len(sequences) < 50:
+        return np.zeros(len(pdf))
+
+    n_features = len(lstm_feats)
+    model = keras.Sequential([
+        keras.layers.LSTM(32, input_shape=(SEQUENCE_LENGTH, n_features), return_sequences=True),
+        keras.layers.LSTM(16, return_sequences=False),
+        keras.layers.RepeatVector(SEQUENCE_LENGTH),
+        keras.layers.LSTM(16, return_sequences=True),
+        keras.layers.LSTM(32, return_sequences=True),
+        keras.layers.TimeDistributed(keras.layers.Dense(n_features)),
+    ])
+    model.compile(optimizer="adam", loss="mse")
+
+    try:
+        model.fit(sequences, sequences, epochs=10, batch_size=32, verbose=0, shuffle=True)
+        reconstructed = model.predict(sequences, verbose=0)
+        mse_per_seq = np.mean(np.square(sequences - reconstructed), axis=(1, 2))
+
+        scores = np.zeros(len(pdf))
+        for i, mse in enumerate(mse_per_seq):
+            scores[i + SEQUENCE_LENGTH - 1] = mse
+
+        for i in range(SEQUENCE_LENGTH - 1):
+            scores[i] = scores[SEQUENCE_LENGTH - 1]
+
+        return scores
+    except Exception:
+        return np.zeros(len(pdf))
+
+
+def _extreme_value_weight(values, quantile=0.95):
+    """
+    Compute weights that up-weight extreme values (tail events).
+    Inspired by MMWSTM-ADRAN+ extreme-value-aware scoring.
+    """
+    threshold = np.quantile(values[values > 0], quantile) if np.any(values > 0) else 1.0
+    weights = np.ones_like(values)
+    extreme_mask = values > threshold
+    if extreme_mask.any():
+        weights[extreme_mask] = 1.0 + np.log1p(values[extreme_mask] / threshold)
+    return weights
+
+
+def detect_anomalies_hybrid(pdf: pd.DataFrame) -> pd.DataFrame:
+    """
+    Hybrid anomaly detection combining Isolation Forest + LSTM-Autoencoder.
+    Uses extreme-value-aware scoring to boost sensitivity to tail events.
+    Parallelized across stations via applyInPandas.
     """
     from sklearn.ensemble import IsolationForest
 
@@ -71,7 +150,6 @@ def detect_anomalies_isolation_forest(pdf: pd.DataFrame) -> pd.DataFrame:
 
     pdf = pdf.sort_values("obs_date").reset_index(drop=True)
 
-    # Extract feature matrix
     available_features = [f for f in ANOMALY_FEATURES if f in pdf.columns]
     if len(available_features) < 3:
         return pd.DataFrame(columns=ANOMALY_OUTPUT_SCHEMA.fieldNames())
@@ -82,30 +160,53 @@ def detect_anomalies_isolation_forest(pdf: pd.DataFrame) -> pd.DataFrame:
     if len(X) < 365:
         return pd.DataFrame(columns=ANOMALY_OUTPUT_SCHEMA.fieldNames())
 
-    # Train Isolation Forest
+    # --- Model 1: Isolation Forest ---
     iso_forest = IsolationForest(
         n_estimators=200,
-        contamination=0.02,  # expect ~2% anomalies
+        contamination=0.02,
         max_samples="auto",
         random_state=42,
         n_jobs=1,
     )
 
     try:
-        predictions = iso_forest.fit_predict(X)
-        anomaly_scores = -iso_forest.score_samples(X)  # higher = more anomalous
+        iso_predictions = iso_forest.fit_predict(X)
+        iso_scores = -iso_forest.score_samples(X)
     except Exception:
         return pd.DataFrame(columns=ANOMALY_OUTPUT_SCHEMA.fieldNames())
 
-    # Filter to anomalies (prediction == -1)
-    anomaly_mask = predictions == -1
+    # --- Model 2: LSTM-Autoencoder (reconstruction error) ---
+    lstm_scores = _lstm_autoencoder_scores(pdf, available_features)
+
+    # --- Ensemble: weighted combination ---
+    if iso_scores.std() > 0:
+        iso_norm = (iso_scores - iso_scores.min()) / (iso_scores.max() - iso_scores.min())
+    else:
+        iso_norm = np.full_like(iso_scores, 0.5)
+
+    if lstm_scores.std() > 0:
+        lstm_norm = (lstm_scores - lstm_scores.min()) / (lstm_scores.max() - lstm_scores.min())
+    else:
+        lstm_norm = np.zeros_like(lstm_scores)
+
+    has_lstm = lstm_scores.sum() > 0
+    if has_lstm:
+        combined_scores = 0.6 * iso_norm + 0.4 * lstm_norm
+    else:
+        combined_scores = iso_norm
+
+    ev_weights = _extreme_value_weight(combined_scores)
+    weighted_scores = combined_scores * ev_weights
+
+    threshold = np.percentile(weighted_scores, 98)
+    anomaly_mask = (weighted_scores >= threshold) | (iso_predictions == -1)
+
     if not anomaly_mask.any():
         return pd.DataFrame(columns=ANOMALY_OUTPUT_SCHEMA.fieldNames())
 
     anomaly_df = pdf[anomaly_mask].copy()
-    anomaly_df["raw_score"] = anomaly_scores[anomaly_mask]
+    anomaly_df["raw_score"] = weighted_scores[anomaly_mask]
 
-    # Normalize severity to 0-1 range
     if anomaly_df["raw_score"].std() > 0:
         anomaly_df["severity"] = (
             (anomaly_df["raw_score"] - anomaly_df["raw_score"].min()) /
@@ -114,7 +215,6 @@ def detect_anomalies_isolation_forest(pdf: pd.DataFrame) -> pd.DataFrame:
     else:
         anomaly_df["severity"] = 0.5
 
-    # Classify anomaly type based on feature values
     def classify_anomaly(row):
         tmax_z = row.get("tmax_zscore_30d", 0) or 0
         tmin_z = row.get("tmin_zscore_30d", 0) or 0
@@ -136,31 +236,29 @@ def detect_anomalies_isolation_forest(pdf: pd.DataFrame) -> pd.DataFrame:
 
     anomaly_df["anomaly_type"] = anomaly_df.apply(classify_anomaly, axis=1)
 
-    # Compute duration (consecutive anomaly days)
     anomaly_df["date_diff"] = anomaly_df["obs_date"].diff().dt.days
     anomaly_df["event_group"] = (anomaly_df["date_diff"] != 1).cumsum()
     duration_map = anomaly_df.groupby("event_group").size().to_dict()
     anomaly_df["duration_days"] = anomaly_df["event_group"].map(duration_map)
 
-    # Compute deviations
     anomaly_df["temp_deviation"] = anomaly_df.get("tmax_zscore_30d", 0)
     anomaly_df["precip_deviation"] = anomaly_df.get("prcp_zscore_30d", 0)
 
-    # Generate descriptions
+    method = "hybrid (IF+LSTM)" if has_lstm else "isolation_forest"
+
     def make_description(row):
         atype = row["anomaly_type"]
         sev = row["severity"]
         dur = row["duration_days"]
         if atype == "heatwave":
-            return f"Heatwave event (severity: {sev:.2f}, {dur} days, +{row.get('temp_deviation', 0):.1f}σ)"
+            return f"Heatwave event (severity: {sev:.2f}, {dur} days, +{row.get('temp_deviation', 0):.1f}σ) [{method}]"
         elif atype == "cold_snap":
-            return f"Cold snap event (severity: {sev:.2f}, {dur} days, {row.get('temp_deviation', 0):.1f}σ)"
+            return f"Cold snap event (severity: {sev:.2f}, {dur} days, {row.get('temp_deviation', 0):.1f}σ) [{method}]"
         else:
-            return f"Precipitation extreme (severity: {sev:.2f}, {dur} days, +{row.get('precip_deviation', 0):.1f}σ)"
+            return f"Precipitation extreme (severity: {sev:.2f}, {dur} days, +{row.get('precip_deviation', 0):.1f}σ) [{method}]"
 
     anomaly_df["description"] = anomaly_df.apply(make_description, axis=1)
 
-    # Build output
     result = pd.DataFrame({
         "station_id": anomaly_df["station_id"],
         "obs_date": anomaly_df["obs_date"],
@@ -208,9 +306,9 @@ def run_anomaly_detection(spark: SparkSession):
 
     input_df = features.select(*[c for c in input_cols if c in features.columns])
 
-    logger.info("Running distributed Isolation Forest anomaly detection...")
+    logger.info("Running distributed hybrid anomaly detection (IF + LSTM-AE)...")
     anomalies = input_df.groupby("station_id").applyInPandas(
-        detect_anomalies_isolation_forest, schema=ANOMALY_OUTPUT_SCHEMA
+        detect_anomalies_hybrid, schema=ANOMALY_OUTPUT_SCHEMA
     )
 
     # Write anomalies

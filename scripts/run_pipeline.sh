@@ -110,6 +110,20 @@ spark-submit \
     echo "  WARNING: STL decomposition failed or timed out, continuing..."
 
 # ---------------------------------------------------------------
+# Step 5.5: Extremes Analysis (Gaps and Islands)
+# ---------------------------------------------------------------
+echo ""
+echo "[Step 5.5/7] Running Gaps & Islands Extreme Events Analysis..."
+
+spark-submit \
+    --master spark://spark-master:7077 \
+    --deploy-mode client \
+    --driver-memory 2g \
+    --executor-memory 2g \
+    --executor-cores 2 \
+    "$PROJECT_DIR/spark/processing/extremes_analysis.py"
+
+# ---------------------------------------------------------------
 # Step 6: Anomaly detection & forecasting
 # ---------------------------------------------------------------
 echo ""

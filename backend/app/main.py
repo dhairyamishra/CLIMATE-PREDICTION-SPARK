@@ -19,7 +19,10 @@ from sqlalchemy import text as sa_text
 from app.core.config import get_settings
 from app.core.database import engine, Base
 from app.models import orm  # noqa: F401 — register ORM models with Base
-from app.api import anomalies, stations, forecasts, tiles, timeseries, summary
+from app.api import (
+    anomalies, stations, forecasts, tiles, timeseries, summary,
+    indices, extremes, trends, export, projections, wind, users,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -105,6 +108,8 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         "/api/tiles": "public, max-age=30, stale-while-revalidate=60",
         "/api/stations": "public, max-age=300, stale-while-revalidate=600",
         "/api/anomalies": "public, max-age=30, stale-while-revalidate=60",
+        "/api/indices": "public, max-age=3600, stale-while-revalidate=7200",
+        "/api/projections": "public, max-age=3600, stale-while-revalidate=7200",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -127,6 +132,13 @@ app.include_router(forecasts.router, prefix="/api", tags=["Forecasts"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
 app.include_router(timeseries.router, prefix="/api", tags=["Time Series"])
 app.include_router(summary.router, prefix="/api", tags=["Summary"])
+app.include_router(indices.router, prefix="/api", tags=["Climate Indices"])
+app.include_router(extremes.router, prefix="/api", tags=["Extreme Values"])
+app.include_router(trends.router, prefix="/api", tags=["Trend Analysis"])
+app.include_router(export.router, prefix="/api", tags=["Data Export"])
+app.include_router(projections.router, prefix="/api", tags=["Climate Projections"])
+app.include_router(wind.router, prefix="/api", tags=["Wind Data"])
+app.include_router(users.router, prefix="/api", tags=["Users & Features"])
 
 
 _start_time = time.monotonic()
@@ -165,4 +177,5 @@ async def health_check():
             "overflow": pool.overflow(),
         },
         "cache_entries": response_cache.size,
+        "cache_backend": response_cache.backend,
     }

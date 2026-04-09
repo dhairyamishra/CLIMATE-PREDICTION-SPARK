@@ -17,11 +17,12 @@ const SEVERITY_RADIUS = {
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] }
 
-export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoundsChange }) {
+export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoundsChange, showWind = false }) {
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
   const [mapReady, setMapReady] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
+  const [windVisible, setWindVisible] = useState(false)
   const debouncedFilters = useDebounce(filters, 500)
   const pendingData = useRef(null)
 
@@ -50,6 +51,10 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
             data: EMPTY_FC,
           },
           'station-points': {
+            type: 'geojson',
+            data: EMPTY_FC,
+          },
+          'wind-arrows': {
             type: 'geojson',
             data: EMPTY_FC,
           },
@@ -118,6 +123,27 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
               'circle-opacity': 0.6,
               'circle-stroke-width': 1,
               'circle-stroke-color': 'rgba(255,255,255,0.2)',
+            },
+          },
+          {
+            id: 'wind-particles',
+            type: 'circle',
+            source: 'wind-arrows',
+            paint: {
+              'circle-radius': ['interpolate', ['linear'], ['get', 'speed'], 0, 2, 5, 4, 15, 8],
+              'circle-color': [
+                'interpolate', ['linear'], ['get', 'speed'],
+                0, '#6baed6',
+                5, '#22c55e',
+                10, '#f59e0b',
+                15, '#ef4444',
+              ],
+              'circle-opacity': 0.6,
+              'circle-stroke-width': 0.5,
+              'circle-stroke-color': 'rgba(255,255,255,0.3)',
+            },
+            layout: {
+              'visibility': 'none',
             },
           },
         ],
@@ -218,6 +244,44 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
     return () => { clearTimeout(fallbackTimer); map.remove(); mapRef.current = null }
   }, [])
 
+  // Wind layer toggle
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+
+    try {
+      map.setLayoutProperty('wind-particles', 'visibility', windVisible ? 'visible' : 'none')
+    } catch {}
+
+    if (!windVisible) return
+
+    const loadWind = async () => {
+      try {
+        const bounds = map.getBounds()
+        const windData = await api.getWind({
+          min_lat: bounds.getSouth(),
+          max_lat: bounds.getNorth(),
+          min_lon: bounds.getWest(),
+          max_lon: bounds.getEast(),
+          resolution: 15,
+        })
+
+        const features = windData.vectors?.map(v => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+          properties: { speed: v.speed, direction: v.direction, u: v.u, v: v.v },
+        })) || []
+
+        const src = map.getSource('wind-arrows')
+        if (src) {
+          src.setData({ type: 'FeatureCollection', features })
+        }
+      } catch {}
+    }
+
+    loadWind()
+  }, [windVisible, mapReady])
+
   const applyDataToMap = useCallback((anomalyData, stationData) => {
     const map = mapRef.current
     if (!map) return false
@@ -298,6 +362,21 @@ export default function AnomalyMap({ filters, timeRange, onStationSelect, onBoun
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" role="application" aria-label="Climate anomaly map" />
       {dataLoading && <MapLoadingSkeleton />}
+
+      {/* Wind layer toggle */}
+      <button
+        onClick={() => setWindVisible(v => !v)}
+        className={`absolute top-3 right-14 z-10 p-2 rounded-lg shadow-lg border transition-colors ${
+          windVisible
+            ? 'bg-primary text-primary-foreground border-primary'
+            : 'bg-card/90 text-muted-foreground border-border hover:text-foreground'
+        }`}
+        title={windVisible ? 'Hide wind field' : 'Show wind field'}
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2" />
+        </svg>
+      </button>
     </div>
   )
 }

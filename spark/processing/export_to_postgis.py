@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.spark_config import (
     get_spark_session,
     PROCESSED_STATION_METADATA, FEATURES_ROLLING_STATS,
-    OUTPUT_ANOMALIES, OUTPUT_FORECASTS, OUTPUT_TILES, OUTPUT_SUMMARIES
+    OUTPUT_ANOMALIES, OUTPUT_FORECASTS, OUTPUT_TILES, OUTPUT_SUMMARIES,
+    OUTPUT_INDICES, OUTPUT_EVS, OUTPUT_TRENDS, OUTPUT_PROJECTIONS
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -356,6 +357,197 @@ def export_monthly_summary(spark: SparkSession):
     logger.info(f"Exported {len(values)} monthly summary records to PostGIS")
 
 
+def export_climate_indices(spark: SparkSession):
+    """Export climate index time series to PostGIS."""
+    logger.info("Exporting climate indices to PostGIS...")
+
+    df = spark.read.parquet(OUTPUT_INDICES)
+    pdf = df.toPandas()
+
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgis"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("POSTGRES_DB", "climate_db"),
+        user=os.getenv("POSTGRES_USER", "climate"),
+        password=os.getenv("POSTGRES_PASSWORD", "climate_secret"),
+    )
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE climate_indices")
+
+    values = []
+    for _, row in pdf.iterrows():
+        values.append((
+            row["index_date"], row["index_name"], row["value"],
+            row.get("anomaly"), row.get("source"),
+        ))
+
+    if values:
+        execute_values(
+            cur,
+            """INSERT INTO climate_indices
+                (index_date, index_name, value, anomaly, source)
+               VALUES %s""",
+            values,
+            template="(%s, %s, %s, %s, %s)",
+            page_size=5000,
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"Exported {len(values)} climate index records to PostGIS")
+
+
+def export_extreme_value_stats(spark: SparkSession):
+    """Export extreme value statistics to PostGIS."""
+    logger.info("Exporting extreme value stats to PostGIS...")
+
+    df = spark.read.parquet(OUTPUT_EVS)
+    pdf = df.toPandas()
+
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgis"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("POSTGRES_DB", "climate_db"),
+        user=os.getenv("POSTGRES_USER", "climate"),
+        password=os.getenv("POSTGRES_PASSWORD", "climate_secret"),
+    )
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE extreme_value_stats")
+
+    values = []
+    for _, row in pdf.iterrows():
+        values.append((
+            row["station_id"], row["variable"], row["distribution"],
+            int(row["return_period"]), row["return_level"],
+            row.get("lower_ci"), row.get("upper_ci"),
+            row.get("shape_param"), row.get("location_param"),
+            row.get("scale_param"), int(row.get("n_years", 0)),
+        ))
+
+    if values:
+        execute_values(
+            cur,
+            """INSERT INTO extreme_value_stats
+                (station_id, variable, distribution, return_period, return_level,
+                 lower_ci, upper_ci, shape_param, location_param, scale_param, n_years)
+               VALUES %s""",
+            values,
+            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            page_size=5000,
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"Exported {len(values)} extreme value stats to PostGIS")
+
+
+def export_trend_analysis(spark: SparkSession):
+    """Export trend analysis results to PostGIS."""
+    logger.info("Exporting trend analysis to PostGIS...")
+
+    df = spark.read.parquet(OUTPUT_TRENDS)
+    pdf = df.toPandas()
+
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgis"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("POSTGRES_DB", "climate_db"),
+        user=os.getenv("POSTGRES_USER", "climate"),
+        password=os.getenv("POSTGRES_PASSWORD", "climate_secret"),
+    )
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE trend_analysis")
+
+    values = []
+    for _, row in pdf.iterrows():
+        values.append((
+            row["station_id"], row["variable"],
+            int(row["period_start"]), int(row["period_end"]),
+            row["trend_direction"], row["sens_slope"], row["p_value"],
+            row.get("z_statistic"), row.get("tau"),
+            row.get("slope_per_decade"),
+            row.get("ci_lower"), row.get("ci_upper"),
+            bool(row.get("significant", False)),
+        ))
+
+    if values:
+        execute_values(
+            cur,
+            """INSERT INTO trend_analysis
+                (station_id, variable, period_start, period_end,
+                 trend_direction, sens_slope, p_value, z_statistic, tau,
+                 slope_per_decade, ci_lower, ci_upper, significant)
+               VALUES %s""",
+            values,
+            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            page_size=5000,
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"Exported {len(values)} trend analysis records to PostGIS")
+
+
+def export_climate_projections(spark: SparkSession):
+    """Export CMIP6 climate projections to PostGIS."""
+    logger.info("Exporting climate projections to PostGIS...")
+
+    df = spark.read.parquet(OUTPUT_PROJECTIONS)
+    pdf = df.toPandas()
+
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgis"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("POSTGRES_DB", "climate_db"),
+        user=os.getenv("POSTGRES_USER", "climate"),
+        password=os.getenv("POSTGRES_PASSWORD", "climate_secret"),
+    )
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE climate_projections")
+
+    values = []
+    for _, row in pdf.iterrows():
+        values.append((
+            row.get("station_id"), row["projection_date"], row["scenario"],
+            row["variable"], row["predicted_value"],
+            row.get("lower_bound"), row.get("upper_bound"),
+            row.get("model_name"), row.get("ensemble_size"),
+            bool(row.get("bias_corrected", False)),
+        ))
+
+    if values:
+        execute_values(
+            cur,
+            """INSERT INTO climate_projections
+                (station_id, projection_date, scenario, variable, predicted_value,
+                 lower_bound, upper_bound, model_name, ensemble_size, bias_corrected)
+               VALUES %s""",
+            values,
+            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            page_size=5000,
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"Exported {len(values)} projection records to PostGIS")
+
+
 def export_all(spark: SparkSession):
     """Run full export pipeline."""
     logger.info("=" * 60)
@@ -368,10 +560,14 @@ def export_all(spark: SparkSession):
     export_tiles(spark)
     export_monthly_summary(spark)
 
-    try:
-        export_forecasts(spark)
-    except Exception as e:
-        logger.warning(f"Forecast export skipped: {e}")
+    for export_fn in [
+        export_forecasts, export_climate_indices, export_extreme_value_stats,
+        export_trend_analysis, export_climate_projections,
+    ]:
+        try:
+            export_fn(spark)
+        except Exception as e:
+            logger.warning(f"{export_fn.__name__} skipped: {e}")
 
     logger.info("=" * 60)
     logger.info("PostGIS export complete!")
@@ -390,6 +586,10 @@ if __name__ == "__main__":
         "forecasts": lambda: export_forecasts(spark),
         "tiles": lambda: export_tiles(spark),
         "summary": lambda: export_monthly_summary(spark),
+        "indices": lambda: export_climate_indices(spark),
+        "extremes": lambda: export_extreme_value_stats(spark),
+        "trends": lambda: export_trend_analysis(spark),
+        "projections": lambda: export_climate_projections(spark),
     }
 
     if action in actions:

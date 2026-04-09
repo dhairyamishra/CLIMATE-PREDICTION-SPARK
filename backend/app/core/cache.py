@@ -1,13 +1,20 @@
 """
-Lightweight in-memory TTL cache for expensive API responses.
-Thread-safe, async-compatible, no external dependencies.
+Multi-backend TTL cache for API responses.
+Supports both in-memory (development) and Redis (production).
+Thread-safe, async-compatible.
 """
+import os
 import time
 import asyncio
 import hashlib
 import json
+import logging
 from typing import Any, Optional
 from functools import wraps
+
+logger = logging.getLogger(__name__)
+
+REDIS_URL = os.getenv("REDIS_URL", "")
 
 
 class TTLCache:
@@ -60,9 +67,100 @@ class TTLCache:
     def size(self) -> int:
         return len(self._store)
 
+    @property
+    def backend(self) -> str:
+        return "memory"
 
-# Global cache instance
-response_cache = TTLCache(default_ttl=60, max_size=512)
+
+class RedisCache:
+    """Redis-backed cache for production horizontal scaling."""
+
+    def __init__(self, redis_url: str, default_ttl: int = 60, prefix: str = "climate:"):
+        self._default_ttl = default_ttl
+        self._prefix = prefix
+        self._redis = None
+        self._redis_url = redis_url
+
+    async def _get_redis(self):
+        if self._redis is None:
+            try:
+                import redis.asyncio as aioredis
+                self._redis = aioredis.from_url(
+                    self._redis_url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                )
+                await self._redis.ping()
+                logger.info("Redis cache connected")
+            except Exception as e:
+                logger.warning(f"Redis connection failed: {e}, falling back to memory")
+                self._redis = None
+        return self._redis
+
+    async def get(self, key: str) -> Optional[Any]:
+        r = await self._get_redis()
+        if r is None:
+            return None
+        try:
+            data = await r.get(f"{self._prefix}{key}")
+            if data is not None:
+                return json.loads(data)
+        except Exception:
+            pass
+        return None
+
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None):
+        r = await self._get_redis()
+        if r is None:
+            return
+        try:
+            await r.setex(
+                f"{self._prefix}{key}",
+                ttl or self._default_ttl,
+                json.dumps(value, default=str),
+            )
+        except Exception:
+            pass
+
+    async def invalidate(self, pattern: str = ""):
+        r = await self._get_redis()
+        if r is None:
+            return
+        try:
+            if not pattern:
+                keys = []
+                async for key in r.scan_iter(f"{self._prefix}*"):
+                    keys.append(key)
+                if keys:
+                    await r.delete(*keys)
+            else:
+                keys = []
+                async for key in r.scan_iter(f"{self._prefix}*{pattern}*"):
+                    keys.append(key)
+                if keys:
+                    await r.delete(*keys)
+        except Exception:
+            pass
+
+    @property
+    def size(self) -> int:
+        return -1
+
+    @property
+    def backend(self) -> str:
+        return "redis"
+
+
+def _create_cache() -> TTLCache | RedisCache:
+    """Create the appropriate cache backend."""
+    if REDIS_URL:
+        logger.info(f"Using Redis cache: {REDIS_URL}")
+        return RedisCache(REDIS_URL, default_ttl=60)
+    logger.info("Using in-memory cache")
+    return TTLCache(default_ttl=60, max_size=512)
+
+
+response_cache = _create_cache()
 
 
 def cache_key(*args, **kwargs) -> str:

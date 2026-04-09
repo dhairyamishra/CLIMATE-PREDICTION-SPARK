@@ -1,12 +1,47 @@
-import React, { useState, useCallback } from 'react'
-import { Calendar, Play, Pause } from 'lucide-react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { Calendar, Play, Pause, SkipForward } from 'lucide-react'
 
 export default function TimeSlider({ startYear, endYear, value, onChange }) {
   const [localStart, setLocalStart] = useState(value.start)
   const [localEnd, setLocalEnd] = useState(value.end)
   const [isDragging, setIsDragging] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [playYear, setPlayYear] = useState(startYear)
+  const playRef = useRef(null)
 
   const totalYears = endYear - startYear
+
+  useEffect(() => {
+    if (!isPlaying) {
+      if (playRef.current) clearInterval(playRef.current)
+      return
+    }
+
+    playRef.current = setInterval(() => {
+      setPlayYear(prev => {
+        const next = prev + 1
+        if (next > endYear) {
+          setIsPlaying(false)
+          onChange(startYear, endYear)
+          return startYear
+        }
+        onChange(prev, next)
+        return next
+      })
+    }, 800)
+
+    return () => { if (playRef.current) clearInterval(playRef.current) }
+  }, [isPlaying, startYear, endYear, onChange])
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) {
+      setIsPlaying(false)
+      onChange(startYear, endYear)
+    } else {
+      setPlayYear(startYear)
+      setIsPlaying(true)
+    }
+  }, [isPlaying, startYear, endYear, onChange])
 
   const handleStartChange = useCallback((e) => {
     const newStart = parseInt(e.target.value)
@@ -39,8 +74,23 @@ export default function TimeSlider({ startYear, endYear, value, onChange }) {
           <Calendar className="w-4 h-4" />
           <span>Historical Time Range</span>
         </div>
-        <div className="text-sm font-semibold text-primary">
-          {localStart} — {localEnd}
+        <div className="flex items-center gap-2">
+          {isPlaying && (
+            <span className="text-xs text-primary font-mono animate-pulse">{playYear}</span>
+          )}
+          <button
+            onClick={togglePlay}
+            className="p-1 rounded hover:bg-secondary transition-colors"
+            title={isPlaying ? 'Stop animation' : 'Animate through years'}
+          >
+            {isPlaying
+              ? <Pause className="w-3.5 h-3.5 text-primary" />
+              : <Play className="w-3.5 h-3.5 text-muted-foreground" />
+            }
+          </button>
+          <div className="text-sm font-semibold text-primary">
+            {isPlaying ? `${playYear - 1}–${playYear}` : `${localStart} — ${localEnd}`}
+          </div>
         </div>
       </div>
 

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     api_key: str = "dev-api-key-change-me"
     cors_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost:80"
 
+    # Redis (optional — falls back to in-memory cache if empty)
+    redis_url: str = ""
+
     # Spark
     spark_master_url: str = "spark://spark-master:7077"
 

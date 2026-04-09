@@ -36,6 +36,10 @@ echo [Step 5/7] Running STL decomposition...
 docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/processing/stl_decomposition.py
 
 echo.
+echo [Step 5.5/7] Running Gaps ^& Islands Extreme Events Analysis...
+docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/processing/extremes_analysis.py
+
+echo.
 echo [Step 6/7] Running anomaly detection and forecasting...
 docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ml/anomaly_detection.py
 docker-compose exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-jobs/ml/forecasting.py statistical

@@ -1,7 +1,7 @@
 import React from 'react'
-import { Globe, PanelLeftClose, PanelLeft, LayoutDashboard, Thermometer } from 'lucide-react'
+import { Globe, PanelLeftClose, PanelLeft, LayoutDashboard, Thermometer, GitCompare } from 'lucide-react'
 
-export default function Header({ onToggleSidebar, onToggleDashboard, showDashboard }) {
+export default function Header({ onToggleSidebar, onToggleDashboard, showDashboard, onToggleComparison, showComparison }) {
   return (
     <header className="h-14 bg-card border-b border-border flex items-center justify-between px-4 shrink-0 z-20" role="banner">
       <div className="flex items-center gap-3">
@@ -34,6 +34,20 @@ export default function Header({ onToggleSidebar, onToggleDashboard, showDashboa
         >
           <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
           <span className="hidden sm:inline">Dashboard</span>
+        </button>
+
+        <button
+          onClick={onToggleComparison}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            showComparison
+              ? 'bg-primary text-primary-foreground'
+              : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+          }`}
+          aria-pressed={showComparison}
+          aria-label="Toggle station comparison"
+        >
+          <GitCompare className="w-4 h-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Compare</span>
         </button>
 
         <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground" aria-label="Dataset info">

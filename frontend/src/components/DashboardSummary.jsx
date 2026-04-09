@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
+  BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine
 } from 'recharts'
 import {
-  Globe, Flame, Snowflake, CloudRain, TrendingUp, AlertTriangle, Activity
+  Globe, Flame, Snowflake, CloudRain, TrendingUp, AlertTriangle, Activity, Waves
 } from 'lucide-react'
 import { api } from '../services/api'
 import { DashboardSkeleton } from './Skeleton'
+import ClimateStripes from './ClimateStripes'
 
 const TYPE_COLORS = {
   heatwave: '#ef4444',
@@ -32,14 +33,21 @@ function SummaryCard({ icon: Icon, label, value, color, sub }) {
 
 export default function DashboardSummary() {
   const [summary, setSummary] = useState(null)
+  const [indices, setIndices] = useState(null)
+  const [selectedIndex, setSelectedIndex] = useState('oni')
+  const [indexSeries, setIndexSeries] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     const loadSummary = async () => {
       try {
-        const data = await api.getSummary()
-        setSummary(data)
+        const [summaryData, indicesData] = await Promise.allSettled([
+          api.getSummary(),
+          api.getIndices(),
+        ])
+        if (summaryData.status === 'fulfilled') setSummary(summaryData.value)
+        if (indicesData.status === 'fulfilled') setIndices(indicesData.value)
       } catch (err) {
         setError(err.message)
       } finally {
@@ -48,6 +56,12 @@ export default function DashboardSummary() {
     }
     loadSummary()
   }, [])
+
+  useEffect(() => {
+    api.getIndexSeries(selectedIndex, { limit: 600 })
+      .then(setIndexSeries)
+      .catch(() => setIndexSeries(null))
+  }, [selectedIndex])
 
   if (loading) {
     return <DashboardSkeleton />
@@ -163,6 +177,76 @@ export default function DashboardSummary() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
+
+      {/* Climate Indices */}
+      {indices?.indices?.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Waves className="w-3.5 h-3.5 text-primary" />
+            <h3 className="text-xs font-medium text-muted-foreground">Climate Indices</h3>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {(indices.available || ['oni', 'nao', 'pdo', 'amo', 'iod']).map(idx => (
+              <button
+                key={idx}
+                onClick={() => setSelectedIndex(idx)}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase transition-colors ${
+                  selectedIndex === idx
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {idx}
+              </button>
+            ))}
+          </div>
+          {indexSeries?.data?.length > 0 && (
+            <ResponsiveContainer width="100%" height={140}>
+              <AreaChart data={indexSeries.data} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(217,33%,15%)" />
+                <XAxis
+                  dataKey="index_date"
+                  tick={{ fontSize: 9, fill: 'hsl(215,20%,55%)' }}
+                  tickFormatter={d => d?.slice(0, 7)}
+                  interval={Math.max(1, Math.floor(indexSeries.data.length / 8))}
+                />
+                <YAxis tick={{ fontSize: 9, fill: 'hsl(215,20%,55%)' }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(222,47%,10%)',
+                    border: '1px solid hsl(217,33%,25%)',
+                    borderRadius: 8,
+                    fontSize: 11,
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  fill="hsl(217,91%,60%)"
+                  fillOpacity={0.15}
+                  stroke="hsl(217,91%,60%)"
+                  strokeWidth={1.5}
+                  name={selectedIndex.toUpperCase()}
+                />
+                <ReferenceLine y={0} stroke="hsl(215,20%,40%)" strokeDasharray="3 3" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+          <p className="text-[9px] text-muted-foreground mt-1">{indexSeries?.description || ''}</p>
+        </div>
+      )}
+
+      {/* Global Warming Stripes */}
+      {monthlyTrend.length > 12 && (
+        <ClimateStripes
+          title="Global Anomaly Stripes (Monthly)"
+          data={monthlyTrend
+            .filter(m => m.severity > 0)
+            .map(m => ({ year: m.label, value: m.severity }))}
+          unit="%"
+          height={40}
+        />
       )}
 
       {/* Top regions */}

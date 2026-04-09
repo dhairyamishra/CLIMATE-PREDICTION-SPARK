@@ -1,7 +1,13 @@
 """
-Station-level forecasting using Facebook Prophet, parallelized across
-Spark executors via applyInPandas. Produces 12-month forecasts for
-TMAX, TMIN, PRCP per station with confidence intervals.
+Station-level forecasting using Prophet, NeuralProphet, and statistical methods.
+Parallelized across Spark executors via applyInPandas. Produces 12-month
+multivariate forecasts for TMAX, TMIN, PRCP per station with confidence intervals.
+
+Models:
+  - Prophet: Univariate with yearly seasonality (original)
+  - NeuralProphet: AR-Net with lagged regressors for multivariate context
+  - Statistical: Climatology + trend extrapolation (fallback)
+  - Ensemble: Weighted combination of all available models
 """
 import os
 import sys
@@ -204,6 +210,125 @@ def forecast_station_statistical(pdf: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
+def forecast_station_neuralprophet(pdf: pd.DataFrame) -> pd.DataFrame:
+    """
+    Multivariate forecasting using NeuralProphet with lagged regressors.
+    Uses cross-variable correlations (e.g., temperature-precipitation coupling)
+    and AR-Net for autoregressive context.
+    """
+    try:
+        from neuralprophet import NeuralProphet, set_log_level
+        set_log_level("ERROR")
+    except ImportError:
+        return forecast_station_prophet(pdf)
+
+    station_id = pdf["station_id"].iloc[0]
+    pdf = pdf.sort_values("obs_date").reset_index(drop=True)
+
+    if len(pdf) < 730:
+        return pd.DataFrame(columns=FORECAST_SCHEMA.fieldNames())
+
+    results = []
+    pdf["obs_date"] = pd.to_datetime(pdf["obs_date"])
+
+    all_vars = ["tmax", "tmin", "prcp"]
+    available = [v for v in all_vars if v in pdf.columns and pdf[v].notna().sum() > 365]
+
+    for variable in available:
+        regressors = [v for v in available if v != variable]
+
+        series = pdf[["obs_date", variable] + regressors].copy()
+        series = series.dropna(subset=[variable])
+
+        weekly = series.set_index("obs_date").resample("W").mean().reset_index()
+        weekly = weekly.dropna(subset=[variable])
+        weekly.columns = ["ds"] + [variable] + regressors
+        weekly = weekly.rename(columns={variable: "y"})
+
+        if len(weekly) < 52:
+            continue
+
+        train = weekly.iloc[:-52].copy()
+        test = weekly.iloc[-52:].copy()
+
+        try:
+            model = NeuralProphet(
+                n_forecasts=1,
+                n_lags=12,
+                yearly_seasonality=True,
+                weekly_seasonality=False,
+                daily_seasonality=False,
+                learning_rate=0.01,
+                epochs=30,
+                batch_size=32,
+                quantiles=[0.05, 0.95],
+            )
+
+            for reg in regressors:
+                if reg in train.columns:
+                    model = model.add_lagged_regressor(reg, n_lags=4)
+
+            model.fit(train, freq="W")
+
+            future = model.make_future_dataframe(train, periods=52)
+            for reg in regressors:
+                if reg in future.columns:
+                    future[reg] = future[reg].fillna(method="ffill")
+
+            forecast = model.predict(future)
+
+            yhat_col = "yhat1"
+            lower_col = "yhat1 5.0%"
+            upper_col = "yhat1 95.0%"
+
+            if yhat_col not in forecast.columns:
+                yhat_col = [c for c in forecast.columns if c.startswith("yhat")][0]
+            if lower_col not in forecast.columns:
+                lower_col = yhat_col
+            if upper_col not in forecast.columns:
+                upper_col = yhat_col
+
+            future_mask = forecast["ds"] > train["ds"].max()
+            future_forecast = forecast[future_mask]
+
+            test_forecast = forecast[~future_mask].iloc[-52:]
+            if len(test_forecast) > 0 and len(test) > 0:
+                aligned = min(len(test), len(test_forecast))
+                mae = float(np.mean(np.abs(test["y"].values[:aligned] - test_forecast[yhat_col].values[:aligned])))
+                rmse = float(np.sqrt(np.mean((test["y"].values[:aligned] - test_forecast[yhat_col].values[:aligned]) ** 2)))
+            else:
+                mae, rmse = None, None
+
+            for _, row in future_forecast.iterrows():
+                predicted = row[yhat_col]
+                if variable == "prcp":
+                    predicted = max(0, predicted)
+
+                lower = row.get(lower_col, predicted - 5)
+                upper = row.get(upper_col, predicted + 5)
+
+                results.append({
+                    "station_id": station_id,
+                    "forecast_date": row["ds"].date() if hasattr(row["ds"], "date") else row["ds"],
+                    "variable": variable,
+                    "predicted_value": round(float(predicted), 2),
+                    "lower_bound": round(float(lower), 2),
+                    "upper_bound": round(float(upper), 2),
+                    "model_type": "neuralprophet",
+                    "model_version": "2.0-multivariate",
+                    "mae": round(mae, 4) if mae else None,
+                    "rmse": round(rmse, 4) if rmse else None,
+                })
+
+        except Exception:
+            continue
+
+    if not results:
+        return forecast_station_prophet(pdf)
+
+    return pd.DataFrame(results)
+
+
 def run_forecasting(spark: SparkSession, use_prophet: bool = True):
     """Run distributed forecasting across all stations."""
     logger.info("Loading feature data for forecasting...")
@@ -237,16 +362,16 @@ def run_forecasting(spark: SparkSession, use_prophet: bool = True):
 
 def run_ensemble_forecasting(spark: SparkSession):
     """
-    Run ensemble forecasting combining Prophet and statistical models.
-    Weighted average: 70% Prophet, 30% statistical.
+    Run ensemble forecasting combining NeuralProphet, Prophet, and statistical models.
+    Weighted: 50% NeuralProphet, 30% Prophet, 20% statistical.
+    Falls back to 70/30 Prophet/statistical if NeuralProphet unavailable.
     """
-    logger.info("Running ensemble forecasting...")
+    logger.info("Running multi-model ensemble forecasting...")
 
     df = spark.read.parquet(FEATURES_ROLLING_STATS).select(
         "station_id", "obs_date", "tmax", "tmin", "prcp"
     )
 
-    # Run both models
     prophet_forecasts = df.groupby("station_id").applyInPandas(
         forecast_station_prophet, schema=FORECAST_SCHEMA
     ).withColumn("source", F.lit("prophet"))
@@ -255,20 +380,35 @@ def run_ensemble_forecasting(spark: SparkSession):
         forecast_station_statistical, schema=FORECAST_SCHEMA
     ).withColumn("source", F.lit("statistical"))
 
-    # Combine with weighted average
+    try:
+        np_forecasts = df.groupby("station_id").applyInPandas(
+            forecast_station_neuralprophet, schema=FORECAST_SCHEMA
+        ).withColumn("source", F.lit("neuralprophet"))
+        has_np = np_forecasts.count() > 0
+    except Exception:
+        has_np = False
+        np_forecasts = None
+
+    if has_np:
+        w_np, w_prophet, w_stat = 0.50, 0.30, 0.20
+        version = "np_0.5_prophet_0.3_stat_0.2"
+    else:
+        w_prophet, w_stat = 0.70, 0.30
+        version = "prophet_0.7_stat_0.3"
+
     prophet_w = prophet_forecasts.select(
         "station_id", "forecast_date", "variable",
-        (F.col("predicted_value") * 0.7).alias("weighted_pred"),
-        (F.col("lower_bound") * 0.7).alias("weighted_lower"),
-        (F.col("upper_bound") * 0.7).alias("weighted_upper"),
+        (F.col("predicted_value") * w_prophet).alias("weighted_pred"),
+        (F.col("lower_bound") * w_prophet).alias("weighted_lower"),
+        (F.col("upper_bound") * w_prophet).alias("weighted_upper"),
         "mae", "rmse",
     )
 
     statistical_w = statistical_forecasts.select(
         "station_id", "forecast_date", "variable",
-        (F.col("predicted_value") * 0.3).alias("weighted_pred"),
-        (F.col("lower_bound") * 0.3).alias("weighted_lower"),
-        (F.col("upper_bound") * 0.3).alias("weighted_upper"),
+        (F.col("predicted_value") * w_stat).alias("weighted_pred"),
+        (F.col("lower_bound") * w_stat).alias("weighted_lower"),
+        (F.col("upper_bound") * w_stat).alias("weighted_upper"),
     )
 
     ensemble = prophet_w.join(
@@ -277,22 +417,42 @@ def run_ensemble_forecasting(spark: SparkSession):
         how="outer"
     )
 
+    pred_expr = (
+        F.coalesce(prophet_w.weighted_pred, F.lit(0)) +
+        F.coalesce(statistical_w.weighted_pred, F.lit(0))
+    )
+    lower_expr = (
+        F.coalesce(prophet_w.weighted_lower, F.lit(0)) +
+        F.coalesce(statistical_w.weighted_lower, F.lit(0))
+    )
+    upper_expr = (
+        F.coalesce(prophet_w.weighted_upper, F.lit(0)) +
+        F.coalesce(statistical_w.weighted_upper, F.lit(0))
+    )
+
+    if has_np:
+        np_w = np_forecasts.select(
+            "station_id", "forecast_date", "variable",
+            (F.col("predicted_value") * w_np).alias("np_pred"),
+            (F.col("lower_bound") * w_np).alias("np_lower"),
+            (F.col("upper_bound") * w_np).alias("np_upper"),
+        )
+        ensemble = ensemble.join(
+            np_w,
+            on=["station_id", "forecast_date", "variable"],
+            how="outer"
+        )
+        pred_expr = pred_expr + F.coalesce(F.col("np_pred"), F.lit(0))
+        lower_expr = lower_expr + F.coalesce(F.col("np_lower"), F.lit(0))
+        upper_expr = upper_expr + F.coalesce(F.col("np_upper"), F.lit(0))
+
     ensemble = ensemble.select(
         "station_id", "forecast_date", "variable",
-        (
-            F.coalesce(prophet_w.weighted_pred, F.lit(0)) +
-            F.coalesce(statistical_w.weighted_pred, F.lit(0))
-        ).alias("predicted_value"),
-        (
-            F.coalesce(prophet_w.weighted_lower, F.lit(0)) +
-            F.coalesce(statistical_w.weighted_lower, F.lit(0))
-        ).alias("lower_bound"),
-        (
-            F.coalesce(prophet_w.weighted_upper, F.lit(0)) +
-            F.coalesce(statistical_w.weighted_upper, F.lit(0))
-        ).alias("upper_bound"),
+        pred_expr.alias("predicted_value"),
+        lower_expr.alias("lower_bound"),
+        upper_expr.alias("upper_bound"),
         F.lit("ensemble").alias("model_type"),
-        F.lit("prophet_0.7_stat_0.3").alias("model_version"),
+        F.lit(version).alias("model_version"),
         prophet_w.mae,
         prophet_w.rmse,
     )
@@ -313,9 +473,19 @@ if __name__ == "__main__":
         run_forecasting(spark, use_prophet=True)
     elif action == "statistical":
         run_forecasting(spark, use_prophet=False)
+    elif action == "neuralprophet":
+        logger.info("Running NeuralProphet multivariate forecasting...")
+        df = spark.read.parquet(FEATURES_ROLLING_STATS).select(
+            "station_id", "obs_date", "tmax", "tmin", "prcp"
+        )
+        forecasts = df.groupby("station_id").applyInPandas(
+            forecast_station_neuralprophet, schema=FORECAST_SCHEMA
+        )
+        forecasts.write.mode("overwrite").partitionBy("variable").parquet(OUTPUT_FORECASTS)
+        logger.info(f"NeuralProphet complete: {forecasts.count():,} forecast points")
     elif action == "ensemble":
         run_ensemble_forecasting(spark)
     else:
-        logger.error(f"Unknown action: {action}. Use: prophet, statistical, ensemble")
+        logger.error(f"Unknown action: {action}. Use: prophet, statistical, neuralprophet, ensemble")
 
     spark.stop()

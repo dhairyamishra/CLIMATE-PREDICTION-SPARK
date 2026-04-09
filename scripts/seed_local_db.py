@@ -110,12 +110,16 @@ def seed(conn) -> None:
     # ------------------------------------------------------------------
     # Stations
     # ------------------------------------------------------------------
-    cur.execute("DELETE FROM anomalies")
-    cur.execute("DELETE FROM observations")
-    cur.execute("DELETE FROM forecasts")
-    cur.execute("DELETE FROM anomaly_tiles")
-    cur.execute("DELETE FROM monthly_summary")
-    cur.execute("DELETE FROM stations")
+    for tbl in [
+        "annotations", "alert_subscriptions", "saved_views", "users",
+        "climate_projections", "trend_analysis", "extreme_value_stats",
+        "climate_indices", "anomalies", "observations", "forecasts",
+        "anomaly_tiles", "monthly_summary", "stations",
+    ]:
+        try:
+            cur.execute(f"DELETE FROM {tbl}")
+        except Exception:
+            conn.rollback()
     conn.commit()
 
     print(f"  Inserting {len(STATIONS)} stations ...")
@@ -189,10 +193,189 @@ def seed(conn) -> None:
         summaries,
     )
     conn.commit()
+
+    # ------------------------------------------------------------------
+    # Climate Indices — ONI, NAO, PDO, AMO, IOD monthly values 2020-2023
+    # ------------------------------------------------------------------
+    cur.execute("DELETE FROM climate_indices")
+    conn.commit()
+
+    indices_data = []
+    index_configs = {
+        "oni": {"mean": 0.0, "std": 0.8, "desc": "ERA5-derived"},
+        "nao": {"mean": 0.0, "std": 1.0, "desc": "ERA5-derived"},
+        "pdo": {"mean": 0.0, "std": 0.6, "desc": "ERA5-derived"},
+        "amo": {"mean": 0.1, "std": 0.3, "desc": "ERA5-derived"},
+        "iod": {"mean": 0.0, "std": 0.4, "desc": "ERA5-derived"},
+    }
+
+    for year in range(2020, 2024):
+        for month in range(1, 13):
+            idx_date = date(year, month, 1)
+            for idx_name, cfg in index_configs.items():
+                val = round(rng.gauss(cfg["mean"], cfg["std"]), 4)
+                anom = round(val - cfg["mean"], 4)
+                indices_data.append((idx_date, idx_name, val, anom, cfg["desc"]))
+
+    print(f"  Inserting {len(indices_data)} climate index records ...")
+    execute_values(
+        cur,
+        """INSERT INTO climate_indices
+            (index_date, index_name, value, anomaly, source)
+           VALUES %s""",
+        indices_data,
+    )
+    conn.commit()
+
+    # ------------------------------------------------------------------
+    # Extreme Value Stats — GEV return levels per station
+    # ------------------------------------------------------------------
+    cur.execute("DELETE FROM extreme_value_stats")
+    conn.commit()
+
+    evs_data = []
+    return_periods = [10, 25, 50, 100]
+    for sid, name, lat, lon, *_ in STATIONS:
+        base_tmax = 30 + lat * 0.2
+        for variable in ["tmax", "tmin", "prcp"]:
+            shape = round(rng.uniform(-0.2, 0.3), 4)
+            loc = round(rng.uniform(20, 40) if variable != "prcp" else rng.uniform(30, 80), 2)
+            scale = round(rng.uniform(2, 8), 2)
+            for rp in return_periods:
+                factor = math.log(rp) * 0.8
+                rl = round(loc + scale * factor * (1 + shape * 0.5), 2)
+                ci_w = round(scale * 0.3 * math.sqrt(math.log(rp)), 2)
+                evs_data.append((
+                    sid, variable, "gev", rp, rl,
+                    round(rl - ci_w, 2), round(rl + ci_w, 2),
+                    shape, loc, scale, rng.randint(20, 50),
+                ))
+
+    print(f"  Inserting {len(evs_data)} extreme value stats ...")
+    execute_values(
+        cur,
+        """INSERT INTO extreme_value_stats
+            (station_id, variable, distribution, return_period, return_level,
+             lower_ci, upper_ci, shape_param, location_param, scale_param, n_years)
+           VALUES %s""",
+        evs_data,
+    )
+    conn.commit()
+
+    # ------------------------------------------------------------------
+    # Trend Analysis — Mann-Kendall per station per variable
+    # ------------------------------------------------------------------
+    cur.execute("DELETE FROM trend_analysis")
+    conn.commit()
+
+    trend_data = []
+    for sid, name, lat, lon, *_ in STATIONS:
+        for variable in ["tmax", "tmin", "prcp"]:
+            slope = round(rng.gauss(0.02, 0.03), 6)
+            p_val = round(rng.uniform(0.001, 0.3), 6)
+            significant = p_val < 0.05
+            direction = "increasing" if slope > 0 else "decreasing" if slope < 0 else "no_trend"
+            trend_data.append((
+                sid, variable, 2020, 2023, direction, slope, p_val,
+                round(rng.gauss(2.0, 1.0), 4),
+                round(rng.uniform(0.1, 0.5), 4),
+                round(slope * 10, 4),
+                round(slope - 0.01, 6), round(slope + 0.01, 6),
+                significant,
+            ))
+
+    print(f"  Inserting {len(trend_data)} trend analysis records ...")
+    execute_values(
+        cur,
+        """INSERT INTO trend_analysis
+            (station_id, variable, period_start, period_end, trend_direction,
+             sens_slope, p_value, z_statistic, tau, slope_per_decade,
+             ci_lower, ci_upper, significant)
+           VALUES %s""",
+        trend_data,
+    )
+    conn.commit()
+
+    # ------------------------------------------------------------------
+    # Climate Projections — SSP245 for each station, 2025-2100 (yearly)
+    # ------------------------------------------------------------------
+    cur.execute("DELETE FROM climate_projections")
+    conn.commit()
+
+    proj_data = []
+    for sid, name, lat, lon, *_ in STATIONS:
+        for scenario, rate_cfg in [
+            ("ssp126", 0.015), ("ssp245", 0.028), ("ssp370", 0.042), ("ssp585", 0.060),
+        ]:
+            lat_factor = 1.0 + 0.5 * (abs(lat) / 90.0)
+            for variable in ["tmax", "tmin", "prcp"]:
+                base = 25.0 if variable == "tmax" else 15.0 if variable == "tmin" else 50.0
+                rate = rate_cfg * lat_factor * (0.8 if variable == "prcp" else 1.0)
+                for year in range(2025, 2101, 5):
+                    delta = rate * (year - 2020)
+                    val = round(base + delta + rng.gauss(0, 1.5), 2)
+                    spread = round(1.5 * (1 + (year - 2020) / 80.0), 2)
+                    proj_data.append((
+                        sid, date(year, 7, 1), scenario, variable, val,
+                        round(val - 1.645 * spread, 2),
+                        round(val + 1.645 * spread, 2),
+                        "cmip6-ensemble-bc", 5, True,
+                    ))
+
+    print(f"  Inserting {len(proj_data)} climate projection records ...")
+    execute_values(
+        cur,
+        """INSERT INTO climate_projections
+            (station_id, projection_date, scenario, variable, predicted_value,
+             lower_bound, upper_bound, model_name, ensemble_size, bias_corrected)
+           VALUES %s""",
+        proj_data,
+    )
+    conn.commit()
+
+    # ------------------------------------------------------------------
+    # Forecasts — basic 12-month forecasts per station
+    # ------------------------------------------------------------------
+    cur.execute("DELETE FROM forecasts")
+    conn.commit()
+
+    forecast_data = []
+    for sid, name, lat, lon, *_ in STATIONS:
+        base_tmax = 25 + rng.gauss(0, 5)
+        base_tmin = 15 + rng.gauss(0, 5)
+        base_prcp = 60 + rng.gauss(0, 20)
+        for week in range(52):
+            fdate = date(2024, 1, 1) + timedelta(weeks=week)
+            seasonal = 8 * math.sin(2 * math.pi * week / 52)
+            for var, base in [("tmax", base_tmax), ("tmin", base_tmin), ("prcp", base_prcp)]:
+                val = round(base + seasonal * (0.3 if var == "prcp" else 1.0) + rng.gauss(0, 2), 2)
+                spread = round(rng.uniform(1.5, 4.0), 2)
+                forecast_data.append((
+                    sid, fdate, var, val,
+                    round(val - 1.645 * spread, 2),
+                    round(val + 1.645 * spread, 2),
+                    "ensemble", "prophet_0.7_stat_0.3",
+                    round(rng.uniform(1.0, 4.0), 4),
+                    round(rng.uniform(1.5, 5.0), 4),
+                ))
+
+    print(f"  Inserting {len(forecast_data)} forecast records ...")
+    execute_values(
+        cur,
+        """INSERT INTO forecasts
+            (station_id, forecast_date, variable, predicted_value,
+             lower_bound, upper_bound, model_type, model_version, mae, rmse)
+           VALUES %s""",
+        forecast_data,
+    )
+    conn.commit()
+
     cur.close()
 
     print(f"  Done — {len(STATIONS)} stations, {len(anomalies)} anomalies, "
-          f"{len(summaries)} monthly summaries.")
+          f"{len(summaries)} monthly summaries, {len(indices_data)} indices, "
+          f"{len(evs_data)} extreme value stats, {len(trend_data)} trends, "
+          f"{len(proj_data)} projections, {len(forecast_data)} forecasts.")
 
 
 def main() -> None:

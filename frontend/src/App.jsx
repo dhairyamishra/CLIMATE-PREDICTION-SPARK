@@ -4,6 +4,7 @@ import AnomalyMap from './components/AnomalyMap'
 import Sidebar from './components/Sidebar'
 import StationPanel from './components/StationPanel'
 import DashboardSummary from './components/DashboardSummary'
+import ComparisonView from './components/ComparisonView'
 import TimeSlider from './components/TimeSlider'
 import FilterBar from './components/FilterBar'
 
@@ -11,6 +12,7 @@ export default function App() {
   const [selectedStation, setSelectedStation] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showDashboard, setShowDashboard] = useState(false)
+  const [showComparison, setShowComparison] = useState(false)
   const [filters, setFilters] = useState({
     startDate: '1970-01-01',
     endDate: '2025-12-31',
@@ -53,6 +55,11 @@ export default function App() {
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         onToggleDashboard={() => setShowDashboard(!showDashboard)}
         showDashboard={showDashboard}
+        onToggleComparison={() => {
+          setShowComparison(!showComparison)
+          if (!showComparison) setSidebarOpen(true)
+        }}
+        showComparison={showComparison}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -62,7 +69,12 @@ export default function App() {
             selectedStation={selectedStation}
             onClose={() => setSidebarOpen(false)}
           >
-            {selectedStation ? (
+            {selectedStation && showComparison ? (
+              <ComparisonView
+                stationA={selectedStation}
+                onClose={() => setShowComparison(false)}
+              />
+            ) : selectedStation ? (
               <StationPanel
                 stationId={selectedStation.station_id || selectedStation.id}
                 stationData={selectedStation}

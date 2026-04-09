@@ -154,6 +154,25 @@ services:
       - climate-net
 
   # ============================================================
+  # Redis Cache (optional — backend falls back to in-memory)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: climate-redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - climate-net
+
+  # ============================================================
   # FastAPI Backend
   # ============================================================
   backend:
@@ -162,12 +181,16 @@ services:
     hostname: backend
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
       postgis:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - climate-net
@@ -210,6 +233,7 @@ volumes:
   datanode1-data:
   datanode2-data:
   postgres-data:
+  redis-data:
 
 networks:
   climate-net:
