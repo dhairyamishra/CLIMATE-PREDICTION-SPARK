@@ -95,7 +95,7 @@ The pipeline runs 7 steps:
 3. Ingest raw data into Parquet (GHCN, ERA5, GISS)
 4. Join datasets + compute rolling statistics
 5. Run STL decomposition
-6. Anomaly detection (Isolation Forest) + forecasting (Prophet + statistical)
+6. Anomaly detection (Isolation Forest + LSTM-Autoencoder) + forecasting (NeuralProphet + Prophet + statistical)
 7. Export results to PostGIS
 
 **Expected duration:** 15-45 minutes depending on hardware.
@@ -162,8 +162,8 @@ flowchart LR
     end
 
     subgraph MLpipe["ML Pipeline"]
-        ISO["Isolation Forest\nAnomaly Detection"]
-        PRO["Prophet + Ensemble\nForecasting"]
+        ISO["Isolation Forest\n+ LSTM-Autoencoder"]
+        PRO["NeuralProphet + Prophet\nEnsemble Forecasting"]
     end
 
     subgraph Serve["Serving"]
@@ -208,8 +208,8 @@ flowchart LR
 | **Custom Partitioning** | All ingestion scripts | Hive-style geo-partitioned Parquet by `geohash_prefix` + `year`/`month` for spatial-temporal queries |
 | **Window Functions** | `rolling_statistics.py` | 30/90/365-day rolling mean, stddev, min, max, z-scores via `Window.partitionBy().orderBy().rangeBetween()` |
 | **Distributed STL** | `stl_decomposition.py` | Seasonal-Trend decomposition per station via `applyInPandas` on grouped DataFrame |
-| **Isolation Forest** | `anomaly_detection.py` | Multi-variate anomaly detection (temp z-scores, precip z-scores, STL residuals) per station via `applyInPandas` |
-| **Distributed Forecasting** | `forecasting.py` | Prophet + statistical baseline per station parallelized via `applyInPandas`, with ensemble combination |
+| **Hybrid Anomaly Detection** | `anomaly_detection.py` | Multi-variate anomaly detection (temp z-scores, precip z-scores, STL residuals) per station via `applyInPandas` using Isolation Forest + LSTM-Autoencoder |
+| **Distributed Forecasting** | `forecasting.py` | NeuralProphet, Prophet, and statistical baseline per station parallelized via `applyInPandas`, with weighted ensemble combination |
 | **Adaptive Execution** | `spark_config.py` | AQE enabled with coalescing, dynamic partition overwrite, Kryo serialization |
 | **HDFS Data Lake** | Docker HDFS cluster | Real NameNode + 2 DataNodes, replication factor 2, Snappy-compressed Parquet |
 
@@ -438,7 +438,9 @@ CLIMATE-PREDICTION-SPARK/
 ## Anomaly Detection Approach
 
 1. **Feature Engineering** — Rolling z-scores (30d window), climatological deviation (day-of-year baseline), STL residuals
-2. **Isolation Forest** — Trained per station on multi-variate features; contamination = 2%
+2. **Hybrid Ensembling** — Trained per station on multi-variate features:
+    - **Isolation Forest** (contamination = 2%)
+    - **LSTM-Autoencoder** (reconstruction error sequences via Keras)
 3. **Classification** — Auto-classified as `heatwave` / `cold_snap` / `precip_extreme` based on z-score direction and magnitude
 4. **Duration tracking** — Consecutive anomaly days grouped into events with deviation metrics
 5. **Tile aggregation** — Pre-aggregated by geohash prefix + year/month for fast heatmap rendering
@@ -446,9 +448,12 @@ CLIMATE-PREDICTION-SPARK/
 
 ## Forecasting Approach
 
-1. **Prophet** — Weekly resampled, yearly seasonality, per station per variable via `applyInPandas`
+1. **Multivariate & Univariate ML Architecture** — 
+    - **NeuralProphet** for multivariate context using AR-Net with lagged regressors
+    - **Prophet** for univariate predictions with yearly seasonality
+    - Run per station per variable via `applyInPandas`
 2. **Statistical baseline** — Day-of-year climatology + linear trend with empirical confidence intervals
-3. **Ensemble** — 70% Prophet / 30% statistical with merged confidence intervals
+3. **Ensemble** — Weighted 50% NeuralProphet, 30% Prophet, 20% statistical (with 70/30 Prophet/statistical fallback) mixing and merging confidence intervals
 4. **Validation** — Hold-out last 52 weeks; MAE and RMSE per station per variable
 5. **Model registry** — Results stored with type, version, and performance metrics
 
