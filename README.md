@@ -95,8 +95,9 @@ The pipeline runs 7 steps:
 3. Ingest raw data into Parquet (GHCN, ERA5, GISS)
 4. Join datasets + compute rolling statistics
 5. Run STL decomposition
-6. Anomaly detection (Isolation Forest + LSTM-Autoencoder) + forecasting (NeuralProphet + Prophet + statistical)
-7. Export results to PostGIS
+6. Extremes Analysis (Gaps and Islands) via advanced Spark Window functions
+7. Anomaly detection (Isolation Forest + LSTM-Autoencoder) + forecasting (NeuralProphet + Prophet + statistical)
+8. Export results to PostGIS
 
 **Expected duration:** 15-45 minutes depending on hardware.
 
@@ -159,6 +160,7 @@ flowchart LR
         JOIN["SQL Joins\n4-way merge"]
         ROLL["Rolling Stats\n30/90/365d"]
         STL["STL\nDecomposition"]
+        GAP["Gaps & Islands\nExtremes"]
     end
 
     subgraph MLpipe["ML Pipeline"]
@@ -173,8 +175,8 @@ flowchart LR
     end
 
     GHCN & ERA5 & GISS & SEED --> PAR
-    PAR --> JOIN --> ROLL --> STL
-    STL --> ISO --> PRO
+    PAR --> JOIN --> ROLL --> STL --> GAP
+    GAP --> ISO --> PRO
     PRO --> PG --> FAST --> REACT
 ```
 
@@ -207,6 +209,7 @@ flowchart LR
 | **Spark SQL Joins** | `join_datasets.py` | 4-way join: station metadata, daily obs, ERA5 grid, GISS anomalies with geohash spatial matching |
 | **Custom Partitioning** | All ingestion scripts | Hive-style geo-partitioned Parquet by `geohash_prefix` + `year`/`month` for spatial-temporal queries |
 | **Window Functions** | `rolling_statistics.py` | 30/90/365-day rolling mean, stddev, min, max, z-scores via `Window.partitionBy().orderBy().rangeBetween()` |
+| **Gaps & Islands** | `extremes_analysis.py` | Advanced tracking of extreme event durations/intensities using `lag()` and cumulative `sum()` across ordered partitions |
 | **Distributed STL** | `stl_decomposition.py` | Seasonal-Trend decomposition per station via `applyInPandas` on grouped DataFrame |
 | **Hybrid Anomaly Detection** | `anomaly_detection.py` | Multi-variate anomaly detection (temp z-scores, precip z-scores, STL residuals) per station via `applyInPandas` using Isolation Forest + LSTM-Autoencoder |
 | **Distributed Forecasting** | `forecasting.py` | NeuralProphet, Prophet, and statistical baseline per station parallelized via `applyInPandas`, with weighted ensemble combination |
@@ -316,18 +319,19 @@ CLIMATE-PREDICTION-SPARK/
 |-- docker-compose.yml                     # 10-service Docker orchestration
 |-- .env.example                           # Environment template
 |
-|-- spark/                                 # PySpark processing
-|   |-- config/
-|   |   +-- spark_config.py                #   SparkSession config, HDFS paths
-|   |-- ingestion/
-|   |   |-- ghcn_daily.py                  #   NOAA GHCN-Daily station + observation ingestion
-|   |   |-- era5_reanalysis.py             #   ERA5 reanalysis ingestion
-|   |   +-- giss_temperature.py            #   NASA GISS surface temp ingestion
-|   |-- processing/
-|   |   |-- join_datasets.py               #   4-way SQL join
-|   |   |-- rolling_statistics.py          #   30/90/365-day rolling stats
-|   |   |-- stl_decomposition.py           #   Distributed STL decomposition
-|   |   +-- export_to_postgis.py           #   Spark -> PostGIS bulk export
+| `spark/`                                 | PySpark processing |
+|   `-- config/`                         | |
+|       `-- spark_config.py`               | SparkSession config, HDFS paths |
+|   `-- ingestion/`                      | |
+|       `-- ghcn_daily.py`                 | NOAA GHCN-Daily station + observation ingestion |
+|       `-- era5_reanalysis.py`            | ERA5 reanalysis ingestion |
+|       `-- giss_temperature.py`           | NASA GISS surface temp ingestion |
+|   `-- processing/`                     | |
+|       `-- join_datasets.py`              | 4-way SQL join |
+|       `-- rolling_statistics.py`         | 30/90/365-day rolling stats |
+|       `-- stl_decomposition.py`          | Distributed STL decomposition |
+|       `-- extremes_analysis.py`          | Gaps & Islands extremes duration tracking |
+|       `-- export_to_postgis.py`          | Spark -> PostGIS bulk export |
 |   |-- ml/
 |   |   |-- anomaly_detection.py           #   Isolation Forest + classification
 |   |   +-- forecasting.py                 #   Prophet + statistical + ensemble
